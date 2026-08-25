@@ -4,6 +4,14 @@ Pulls Bitbucket pull requests and their linked Jira tickets into one unified
 record set, so you can see PR review activity (approvals, merges, comments)
 alongside ticket status, story points, and reopen history.
 
+**Live deployment (Render):**
+[smart-ai-review-frontend.onrender.com](https://smart-ai-review-frontend.onrender.com)
+(backend: [smart-ai-review-backend.onrender.com](https://smart-ai-review-backend.onrender.com)).
+Both are free-tier services — the first request after idling can take a few
+seconds while it wakes up. Configure Jira/Bitbucket/AI credentials for this
+deployment via Render environment variables, not the Settings page — see
+**Deploy to Render** below for why.
+
 ## Tech stack
 
 - **Frontend**: React (Vite), `http://localhost:5173`
