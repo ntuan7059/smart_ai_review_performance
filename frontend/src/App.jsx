@@ -5,6 +5,7 @@ import PRExplorerPage from "./pages/PRExplorerPage.jsx";
 import SyncPage from "./pages/SyncPage.jsx";
 import ByTicketPage from "./pages/ByTicketPage.jsx";
 import PerformanceReviewPage from "./pages/PerformanceReviewPage.jsx";
+import PrWatchPage from "./pages/PrWatchPage.jsx";
 
 const TABS = [
   { key: "settings", label: "Settings", Component: SettingsPage },
@@ -12,6 +13,7 @@ const TABS = [
   { key: "sync", label: "Sync & Records", Component: SyncPage },
   { key: "byTicket", label: "By Ticket", Component: ByTicketPage },
   { key: "aiReview", label: "AI Review", Component: PerformanceReviewPage },
+  { key: "prWatch", label: "PR Watch", Component: PrWatchPage },
 ];
 
 class ErrorBoundary extends React.Component {
@@ -38,7 +40,6 @@ class ErrorBoundary extends React.Component {
 
 export default function App() {
   const [tab, setTab] = useState("settings");
-  const Active = TABS.find((t) => t.key === tab)?.Component ?? SettingsPage;
 
   return (
     <ToastProvider>
@@ -59,9 +60,15 @@ export default function App() {
           </nav>
         </header>
         <main>
-          <ErrorBoundary key={tab}>
-            <Active />
-          </ErrorBoundary>
+          {/* All tabs stay mounted (just hidden) so switching tabs never discards a page's state —
+              e.g. an in-progress AI Review result or the PR Watch list/poll timer. */}
+          {TABS.map((t) => (
+            <div key={t.key} style={{ display: t.key === tab ? "block" : "none" }}>
+              <ErrorBoundary>
+                <t.Component />
+              </ErrorBoundary>
+            </div>
+          ))}
         </main>
       </div>
     </ToastProvider>

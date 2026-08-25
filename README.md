@@ -154,6 +154,19 @@ extra configuration.
    formatted document in the UI, with a **Download report (.md)** button to
    save it. Requires a Sync to have run first, and an AI agent configured in
    Settings.
+5. **PR Watch** — the backend polls every 30 minutes for PRs created *today*
+   across every repo in the configured workspace. New ones show up in the
+   table with a **Not reviewed** badge, a toast, and (once you grant the
+   browser permission prompt) a Chrome desktop notification — even while
+   you're on a different tab, since tabs stay mounted in the background
+   rather than unmounting on switch. Click **Review** to have the AI agent
+   write a same-day critique of that one PR — code change assessment, review
+   quality (was it rubber-stamped, was turnaround fast, what did comments
+   actually say), ticket alignment, and a one-PR performance signal — stored
+   against that PR so **View report** can reopen it later. The list is
+   scoped to the current UTC calendar day and starts empty again at midnight
+   UTC; there's also a **Check for new PRs now** button to poll on demand
+   instead of waiting for the next 30-minute tick.
 
 ### Edge cases surfaced in the UI
 
@@ -184,6 +197,9 @@ extra configuration.
 | GET | `/api/records/by-ticket` | Same records grouped by Jira key |
 | GET | `/api/ai-review/authors` | Distinct list of PR authors seen in synced records |
 | POST | `/api/ai-review` | Run an AI performance review for one person (`author`, `from`, `to`) |
+| GET | `/api/pr-watch` | Today's watched PRs (resets at UTC midnight) with review status |
+| POST | `/api/pr-watch/refresh` | Poll Bitbucket now instead of waiting for the 30-minute scheduler |
+| POST | `/api/pr-watch/:repo/:id/review` | Run an AI critique of one watched PR and persist it |
 
 Every Atlassian call goes through a shared HTTP client
 (`backend/src/lib/httpClient.js`) that retries 429/5xx responses with
@@ -210,16 +226,16 @@ and flagging multiple matches.
 ```
 backend/
   src/
-    server.js            Express app + error handling
-    lib/                 HTTP client w/ retry, ADF renderer, key extractor, logger
+    server.js            Express app + error handling, starts the PR-watch scheduler
+    lib/                 HTTP client w/ retry, ADF renderer, key extractor, logger, PR-watch scheduler
     config/               Local config persistence
     services/             Bitbucket, Jira, sync-orchestration, and AI provider/review logic
-    store/                SQLite/JSON record storage abstraction
+    store/                SQLite/JSON record storage abstraction, daily PR-watch storage
     routes/                /api/* route handlers
     tests/                 node:test unit tests
 frontend/
   src/
-    pages/                 Settings, Explore PRs, Sync & Records, By Ticket, AI Review
+    pages/                 Settings, Explore PRs, Sync & Records, By Ticket, AI Review, PR Watch
     components/            Shared UI (status badges, PR detail panel, Markdown renderer)
     lib/                   Small frontend helpers (e.g. default date-range calc)
     context/                Toast notifications

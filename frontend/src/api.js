@@ -60,4 +60,9 @@ export const api = {
   listAiReviewAuthors: () => request("/ai-review/authors"),
   runAiReview: ({ author, from, to }) =>
     request("/ai-review", { method: "POST", body: JSON.stringify({ author, from, to }) }),
+
+  listPrWatch: () => request("/pr-watch"),
+  refreshPrWatch: () => request("/pr-watch/refresh", { method: "POST" }),
+  reviewWatchedPr: (repo, prId) =>
+    request(`/pr-watch/${encodeURIComponent(repo)}/${prId}/review`, { method: "POST" }),
 };
