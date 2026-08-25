@@ -55,6 +55,72 @@ and never leaves your machine except in requests to `*.atlassian.net` and
 `api.bitbucket.org`. They are never logged (see `backend/src/lib/logger.js`,
 which redacts token fields before printing).
 
+## Deploy to Render
+
+The app deploys as two separate Render services from this repo: a **Web
+Service** for the backend and a **Static Site** for the frontend.
+
+### 1. Backend — Web Service
+
+- **Root directory**: `backend`
+- **Runtime**: Node
+- **Build command**: `npm install`
+- **Start command**: `npm start`
+- **Plan**: Free tier works for trying it out
+
+Render sets `PORT` automatically and the app already binds to
+`0.0.0.0:$PORT` (see `backend/src/server.js`), so no changes are needed
+there.
+
+Set these environment variables on the service (Render dashboard → your
+service → Environment) instead of using the Settings UI, since **the free
+tier's disk is ephemeral** — anything the Settings page writes to
+`backend/data/config.json`, and any synced records in
+`backend/data/records.json`, is wiped on every redeploy or restart:
+
+| Key | Notes |
+| --- | --- |
+| `ATLASSIAN_EMAIL`, `ATLASSIAN_API_TOKEN`, `JIRA_BASE_URL` | Jira |
+| `BITBUCKET_WORKSPACE`, `BITBUCKET_API_TOKEN` | Bitbucket (separate token — see Setup) |
+| `JIRA_STORY_POINTS_FIELD` | Optional, defaults to `customfield_10016` |
+| `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL` | AI Review tab |
+
+If persistent storage matters (so synced PR/ticket data survives restarts),
+attach a Render [persistent disk](https://render.com/docs/disks) mounted at
+`backend/data` — this requires a paid plan, since the free tier doesn't
+support disks.
+
+### 2. Frontend — Static Site
+
+- **Root directory**: `frontend`
+- **Build command**: `npm install && npm run build`
+- **Publish directory**: `frontend/dist`
+
+Set one environment variable, pointing at the backend service's URL:
+
+| Key | Value |
+| --- | --- |
+| `VITE_API_BASE_URL` | `https://<your-backend-service>.onrender.com/api` |
+
+`frontend/src/api.js` reads this at build time (Vite inlines `import.meta.env.*`
+into the bundle) and falls back to the relative `/api` path used by the dev
+proxy when it's unset.
+
+The backend already sends a permissive `cors()` header
+(`backend/src/server.js`), so cross-origin requests from the static site's
+`onrender.com` domain to the backend's `onrender.com` domain work without
+extra configuration.
+
+### Notes
+
+- Both services auto-deploy on push to the connected branch.
+- Render's free web services spin down after inactivity and take a few
+  seconds to wake back up on the next request — expect a cold-start delay
+  on the first Sync/AI Review after idling.
+- The Claude-subscription auth option (`ant auth login`) in Settings has no
+  effect on Render — there's no interactive terminal to run it in, so use a
+  real `AI_API_KEY` for the AI Review tab in this deployment.
+
 ## Using the app
 
 1. **Explore PRs** — pick a repo, optional date range/author/state filters,
