@@ -47,8 +47,13 @@ export async function listJiraProjects() {
   return (res.data.values || []).map((p) => ({ id: p.id, key: p.key, name: p.name }));
 }
 
-export async function listBitbucketWorkspaces() {
+/**
+ * Bitbucket removed the "list all accessible workspaces" endpoint (CHANGE-2770,
+ * GET /workspaces now returns 410 Gone with no direct replacement), so the best we
+ * can do is confirm a specific slug the user typed actually exists and is accessible.
+ */
+export async function verifyBitbucketWorkspace(slug) {
   const client = getBitbucketClient();
-  const res = await client.get("/workspaces", { params: { pagelen: 100 } });
-  return (res.data.values || []).map((w) => ({ slug: w.slug, name: w.name }));
+  const res = await client.get(`/workspaces/${encodeURIComponent(slug)}`);
+  return { slug: res.data.slug, name: res.data.name };
 }

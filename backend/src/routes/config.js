@@ -4,7 +4,7 @@ import {
   testJiraConnection,
   testBitbucketConnection,
   listJiraProjects,
-  listBitbucketWorkspaces,
+  verifyBitbucketWorkspace,
 } from "../services/atlassian.js";
 import { asyncHandler } from "../lib/asyncHandler.js";
 
@@ -89,11 +89,9 @@ router.get(
 );
 
 router.get(
-  "/config/bitbucket-workspaces",
+  "/config/bitbucket-workspaces/:slug/verify",
   asyncHandler(async (req, res) => {
-    const cfg = readConfig();
-    if (!cfg.atlassianEmail || !cfg.bitbucketApiToken) return res.json([]);
-    res.json(await listBitbucketWorkspaces());
+    res.json(await verifyBitbucketWorkspace(req.params.slug));
   })
 );
 

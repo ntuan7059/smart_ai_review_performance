@@ -29,8 +29,8 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showAdvanced, setShowAdvanced] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [loadingWorkspaces, setLoadingWorkspaces] = useState(false);
+  const [verifyingWorkspace, setVerifyingWorkspace] = useState(false);
+  const [workspaceVerified, setWorkspaceVerified] = useState(null);
 
   useEffect(() => {
     api
@@ -53,21 +53,27 @@ export default function SettingsPage() {
         });
       })
       .catch((err) => toast.error(err.message));
-    loadWorkspaces();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function loadWorkspaces() {
-    setLoadingWorkspaces(true);
-    api
-      .listBitbucketWorkspaces()
-      .then(setWorkspaces)
-      .catch(() => setWorkspaces([]))
-      .finally(() => setLoadingWorkspaces(false));
+  function update(key, value) {
+    if (key === "bitbucketWorkspace") setWorkspaceVerified(null);
+    setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function update(key, value) {
-    setForm((f) => ({ ...f, [key]: value }));
+  async function handleVerifyWorkspace() {
+    if (!form.bitbucketWorkspace) return toast.error("Type a workspace slug first.");
+    setVerifyingWorkspace(true);
+    setWorkspaceVerified(null);
+    try {
+      const result = await api.verifyBitbucketWorkspace(form.bitbucketWorkspace);
+      setWorkspaceVerified(result);
+      toast.success(`Found workspace "${result.name}".`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setVerifyingWorkspace(false);
+    }
   }
 
   async function handleSave(e) {
@@ -83,7 +89,6 @@ export default function SettingsPage() {
         bitbucket: cfg.bitbucketApiTokenSet,
         ai: cfg.aiApiKeySet,
       });
-      loadWorkspaces();
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -108,11 +113,6 @@ export default function SettingsPage() {
       setTesting(false);
     }
   }
-
-  const workspaceOptions =
-    form.bitbucketWorkspace && !workspaces.some((w) => w.slug === form.bitbucketWorkspace)
-      ? [{ slug: form.bitbucketWorkspace, name: form.bitbucketWorkspace }, ...workspaces]
-      : workspaces;
 
   return (
     <div className="page">
@@ -201,25 +201,24 @@ export default function SettingsPage() {
           </label>
           <div className="field-input">
             <div className="field-input-row">
-              <select
+              <input
                 id="f-workspace"
+                type="text"
                 value={form.bitbucketWorkspace}
                 onChange={(e) => update("bitbucketWorkspace", e.target.value)}
-              >
-                <option value="">{loadingWorkspaces ? "Loading…" : "Select a workspace"}</option>
-                {workspaceOptions.map((w) => (
-                  <option key={w.slug} value={w.slug}>
-                    {w.name} ({w.slug})
-                  </option>
-                ))}
-              </select>
-              <button type="button" onClick={loadWorkspaces} disabled={loadingWorkspaces}>
-                {loadingWorkspaces ? "Loading…" : "Refresh"}
+                placeholder="my-workspace"
+              />
+              <button type="button" onClick={handleVerifyWorkspace} disabled={verifyingWorkspace}>
+                {verifyingWorkspace ? "Checking…" : "Verify"}
               </button>
             </div>
+            {workspaceVerified && (
+              <span className="muted small">✅ Found "{workspaceVerified.name}" ({workspaceVerified.slug})</span>
+            )}
             <span className="muted small">
-              Populated from workspaces your Bitbucket token can access. Save your email + Bitbucket API token
-              first, then refresh.
+              The slug from your workspace's Bitbucket URL (bitbucket.org/<strong>your-slug</strong>/...) — save
+              your email + Bitbucket API token first, then click Verify to confirm it's accessible. Bitbucket no
+              longer offers an API to list all your workspaces, so this can't be a dropdown.
             </span>
           </div>
         </div>

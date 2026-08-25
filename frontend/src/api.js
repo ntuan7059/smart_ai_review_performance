@@ -31,7 +31,7 @@ export const api = {
   saveConfig: (data) => request("/config", { method: "POST", body: JSON.stringify(data) }),
   testConnections: () => request("/config/test", { method: "POST" }),
   listJiraProjects: () => request("/config/jira-projects"),
-  listBitbucketWorkspaces: () => request("/config/bitbucket-workspaces"),
+  verifyBitbucketWorkspace: (slug) => request(`/config/bitbucket-workspaces/${encodeURIComponent(slug)}/verify`),
 
   listRepos: () => request("/bitbucket/repos"),
   listPRs: ({ repo, from, to, author, state }) => {
