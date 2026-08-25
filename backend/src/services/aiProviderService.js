@@ -9,8 +9,10 @@ const DEFAULT_MODELS = {
 
 const CURSOR_BASE_URL = "https://api.cursor.com";
 const CURSOR_POLL_INTERVAL_MS = 3000;
-const CURSOR_POLL_TIMEOUT_MS = 180000;
-const CURSOR_REQUEST_TIMEOUT_MS = 60000;
+const CURSOR_CREATE_TIMEOUT_MS = 150000; // provisioning a cloud agent can be slow to even acknowledge
+const CURSOR_POLL_REQUEST_TIMEOUT_MS = 20000; // a single status check should be quick
+const CURSOR_MAX_CONSECUTIVE_POLL_FAILURES = 5;
+const CURSOR_OVERALL_TIMEOUT_MS = 300000; // hard ceiling on the whole create+poll operation
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -55,13 +57,18 @@ async function askCursor({ apiKey, model, system, prompt }) {
   const client = axios.create({
     baseURL: CURSOR_BASE_URL,
     auth: { username: apiKey, password: "" },
-    timeout: CURSOR_REQUEST_TIMEOUT_MS,
   });
+  const overallDeadline = Date.now() + CURSOR_OVERALL_TIMEOUT_MS;
 
-  const createRes = await client.post("/v1/agents", {
-    prompt: { text: `${system}\n\n${prompt}` },
-    ...(model ? { model } : {}),
-  });
+  // Provisioning a cloud agent (even a no-repo one) can take a while to even
+  // acknowledge the request, especially with a large evidence-packed prompt —
+  // give this one call most of the budget rather than the same short timeout as
+  // a simple status poll.
+  const createRes = await client.post(
+    "/v1/agents",
+    { prompt: { text: `${system}\n\n${prompt}` }, ...(model ? { model } : {}) },
+    { timeout: CURSOR_CREATE_TIMEOUT_MS }
+  );
 
   const agentId = createRes.data?.agent?.id;
   const runId = createRes.data?.run?.id;
@@ -69,9 +76,23 @@ async function askCursor({ apiKey, model, system, prompt }) {
     throw new AtlassianApiError("Cursor did not return an agent/run id.", 502, "AI_BAD_RESPONSE");
   }
 
-  const deadline = Date.now() + CURSOR_POLL_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    const runRes = await client.get(`/v1/agents/${agentId}/runs/${runId}`);
+  let consecutiveFailures = 0;
+  while (Date.now() < overallDeadline) {
+    let runRes;
+    try {
+      runRes = await client.get(`/v1/agents/${agentId}/runs/${runId}`, {
+        timeout: CURSOR_POLL_REQUEST_TIMEOUT_MS,
+      });
+      consecutiveFailures = 0;
+    } catch (err) {
+      // A single slow/flaky status check shouldn't abort an otherwise-healthy agent
+      // run — retry until either it recovers or too many polls fail in a row.
+      consecutiveFailures += 1;
+      if (consecutiveFailures >= CURSOR_MAX_CONSECUTIVE_POLL_FAILURES) throw err;
+      await sleep(CURSOR_POLL_INTERVAL_MS);
+      continue;
+    }
+
     const status = runRes.data?.status;
     if (status === "FINISHED") return runRes.data?.result || "";
     if (status === "ERROR" || status === "CANCELLED" || status === "EXPIRED") {
