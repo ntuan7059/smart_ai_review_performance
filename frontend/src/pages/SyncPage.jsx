@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import { defaultFrom, defaultTo } from "../lib/dates.js";
 
 function formatLocal(iso) {
   if (!iso) return "—";
@@ -19,8 +20,8 @@ export default function SyncPage() {
   const toast = useToast();
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo] = useState(defaultTo);
   const [author, setAuthor] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [records, setRecords] = useState([]);
@@ -125,7 +126,13 @@ export default function SyncPage() {
         <button type="submit" disabled={syncing}>
           {syncing ? "Syncing…" : "Sync"}
         </button>
+        <button type="button" onClick={() => { setFrom(""); setTo(""); }}>
+          Clear dates (sync all time)
+        </button>
       </form>
+      <p className="muted small" style={{ marginTop: -10 }}>
+        Defaults to the last 7 days — widen or clear the range to pull older PRs.
+      </p>
 
       <div className="filter-bar">
         <label>

@@ -3,6 +3,7 @@ import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
 import PRDetailRow from "../components/PRDetailRow.jsx";
+import { defaultFrom, defaultTo } from "../lib/dates.js";
 
 function formatLocal(iso) {
   if (!iso) return "—";
@@ -13,8 +14,8 @@ export default function PRExplorerPage() {
   const toast = useToast();
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState("");
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [from, setFrom] = useState(defaultFrom);
+  const [to, setTo] = useState(defaultTo);
   const [author, setAuthor] = useState("");
   const [state, setState] = useState("");
   const [prs, setPrs] = useState([]);
@@ -107,7 +108,13 @@ export default function PRExplorerPage() {
         <button type="submit" disabled={loading}>
           {loading ? "Loading…" : "Search"}
         </button>
+        <button type="button" onClick={() => { setFrom(""); setTo(""); }}>
+          Clear dates (search all time)
+        </button>
       </form>
+      <p className="muted small" style={{ marginTop: -10 }}>
+        Defaults to the last 7 days — widen or clear the range to see older PRs.
+      </p>
 
       <table className="data-table">
         <thead>

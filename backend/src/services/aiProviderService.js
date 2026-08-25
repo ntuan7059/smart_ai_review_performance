@@ -41,6 +41,7 @@ async function askCodex({ apiKey, model, system, prompt }) {
         { role: "system", content: system },
         { role: "user", content: prompt },
       ],
+      max_tokens: 4096,
     },
     { headers: { Authorization: `Bearer ${apiKey}` }, timeout: 60000 }
   );

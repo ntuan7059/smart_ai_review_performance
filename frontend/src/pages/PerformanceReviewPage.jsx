@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
+import Markdown from "../components/Markdown.jsx";
 
 const METRIC_LABELS = [
   ["totalPRs", "Total PRs"],
@@ -54,13 +55,28 @@ export default function PerformanceReviewPage() {
     }
   }
 
+  function handleDownload() {
+    if (!result) return;
+    const blob = new Blob([result.review], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    const rangeLabel = `${result.from || "all-time"}_to_${result.to || "all-time"}`;
+    a.href = url;
+    a.download = `performance-review_${author}_${rangeLabel}.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
   return (
     <div className="page">
       <h2>AI Review</h2>
       <p className="muted">
-        Uses the AI agent configured in Settings to write a performance review for one person from their synced
-        PR and Jira data — delivery volume, code quality signals from review comments, and rework/bug turnaround
-        time on reopened tickets.
+        Sends the AI agent configured in Settings an evidence packet — per-PR diffstats, commit messages, review
+        comments, and linked ticket descriptions/comments — and asks it to write a structured report (delivery,
+        code quality, rework/bug turnaround, recommendations) that cites specific PRs and tickets rather than
+        vague generalities. Downloadable as a Markdown document once generated.
       </p>
 
       <form className="filter-bar" onSubmit={handleRun}>
@@ -102,10 +118,15 @@ export default function PerformanceReviewPage() {
           </div>
 
           <div className="detail-panel">
-            <div className="muted small" style={{ marginBottom: 8 }}>
-              Provider: {result.provider} · Range: {result.from || "all time"} → {result.to || "all time"}
+            <div className="muted small" style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>
+                Provider: {result.provider} · Range: {result.from || "all time"} → {result.to || "all time"}
+              </span>
+              <button type="button" onClick={handleDownload}>
+                Download report (.md)
+              </button>
             </div>
-            <div className="review-text">{result.review}</div>
+            <Markdown text={result.review} />
           </div>
         </>
       )}

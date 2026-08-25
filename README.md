@@ -131,22 +131,29 @@ extra configuration.
 
 ## Using the app
 
-1. **Explore PRs** — pick a repo, optional date range/author/state filters,
-   and browse pull requests. Expand a row to see diffstat, commits, review
-   comments, and approval/merge timestamps.
+1. **Explore PRs** — pick a repo and browse pull requests; defaults to the
+   last 7 days (widen the range or click **Clear dates** for older PRs).
+   Expand a row to see diffstat, commits, review comments, and approval/merge
+   timestamps.
 2. **Sync & Records** — click **Sync** to run the full pipeline (fetch PRs →
    fetch PR details → extract Jira key from branch/title → fetch ticket →
-   persist). The table below reads from the local store, not from Atlassian,
-   so reloading the page is instant. Filter by author/link-status and sort by
-   any column.
+   persist). Also defaults to the last 7 days — clear the dates to sync
+   everything, e.g. for a first-time backfill. The table below reads from
+   the local store, not from Atlassian, so reloading the page is instant.
+   Filter by author/link-status and sort by any column.
 3. **By Ticket** — the same synced data rolled up per Jira ticket, so a
    ticket touched by multiple PRs shows as one row with all its PRs listed.
-4. **AI Review** — pick a person and an optional date range, and the
-   configured AI agent (Claude, Codex, or Cursor) writes a performance
-   summary from their synced PRs and tickets: delivery volume, code-quality
-   signals inferred from review comments, and rework/bug turnaround — how
-   long it took to land a follow-up PR after a ticket was reopened. Requires
-   a Sync to have run first, and an AI agent configured in Settings.
+4. **AI Review** — pick a person and an optional date range. The backend
+   assembles an evidence packet per PR (diffstat, commit messages, review
+   comment excerpts, linked ticket description/comments) plus the computed
+   delivery/quality/rework metrics, and sends it to the configured AI agent
+   (Claude, Codex, or Cursor) with instructions to write a structured
+   Markdown report — Executive Summary, Delivery, Code Quality, Rework & Bug
+   Turnaround, Recommendations, and an Evidence Log citing the specific
+   PRs/tickets behind each claim — rather than generic prose. Rendered as a
+   formatted document in the UI, with a **Download report (.md)** button to
+   save it. Requires a Sync to have run first, and an AI agent configured in
+   Settings.
 
 ### Edge cases surfaced in the UI
 
@@ -213,7 +220,8 @@ backend/
 frontend/
   src/
     pages/                 Settings, Explore PRs, Sync & Records, By Ticket, AI Review
-    components/            Shared UI (status badges, PR detail panel)
+    components/            Shared UI (status badges, PR detail panel, Markdown renderer)
+    lib/                   Small frontend helpers (e.g. default date-range calc)
     context/                Toast notifications
     api.js                  fetch wrapper for the backend
 ```

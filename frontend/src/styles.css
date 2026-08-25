@@ -244,9 +244,27 @@ button[type="button"] {
   margin-top: 2px;
 }
 
-.review-text {
-  white-space: pre-wrap;
-  line-height: 1.5;
+.markdown-doc {
+  line-height: 1.6;
+}
+
+.markdown-doc h3,
+.markdown-doc h4,
+.markdown-doc h5 {
+  margin: 18px 0 6px;
+}
+
+.markdown-doc h3:first-child,
+.markdown-doc h4:first-child {
+  margin-top: 0;
+}
+
+.markdown-doc p {
+  margin: 6px 0;
+}
+
+.markdown-doc .compact-list {
+  margin: 4px 0 10px;
 }
 
 .detail-panel {

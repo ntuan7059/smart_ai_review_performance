@@ -3,9 +3,13 @@ import { getStore } from "../store/recordStore.js";
 import { askAi } from "./aiProviderService.js";
 import { AtlassianApiError } from "../lib/httpClient.js";
 
-const MAX_PRS_IN_PROMPT = 30;
-const MAX_COMMENTS_PER_PR = 3;
-const COMMENT_EXCERPT_LENGTH = 200;
+const MAX_PRS_IN_PROMPT = 25;
+const MAX_COMMENTS_PER_PR = 6;
+const COMMENT_EXCERPT_LENGTH = 500;
+const MAX_TICKET_COMMENTS_PER_PR = 4;
+const MAX_FILES_LISTED = 8;
+const MAX_COMMITS_LISTED = 5;
+const DESCRIPTION_EXCERPT_LENGTH = 600;
 
 function matchesAuthor(record, author) {
   const needle = author.trim().toLowerCase();
@@ -108,52 +112,94 @@ function buildMetrics(userRecords, ticketGroups) {
   };
 }
 
-function buildPrompt(author, from, to, metrics, userRecords) {
-  const sample = userRecords.slice(0, MAX_PRS_IN_PROMPT).map((r) => ({
+/** Builds the per-PR evidence packet the AI reads to ground every claim it makes. */
+function buildEvidence(userRecords) {
+  return userRecords.slice(0, MAX_PRS_IN_PROMPT).map((r) => ({
     repo: r.repo,
     prId: r.prId,
+    link: r.link,
     title: r.title,
     state: r.state,
     createdAt: r.createdAt,
     mergedAt: r.mergedAt,
+    sourceBranch: r.sourceBranch,
     linesAdded: (r.diffstat || []).reduce((s, d) => s + (d.linesAdded || 0), 0),
     linesRemoved: (r.diffstat || []).reduce((s, d) => s + (d.linesRemoved || 0), 0),
     filesChanged: (r.diffstat || []).length,
+    changedFileSample: (r.diffstat || []).slice(0, MAX_FILES_LISTED).map((d) => d.path),
+    commitMessages: (r.commits || []).slice(0, MAX_COMMITS_LISTED).map((c) => c.message),
     approved: Boolean(r.approvedAt),
-    reviewCommentCount: r.comments?.length || 0,
-    reviewCommentSamples: (r.comments || [])
-      .slice(0, MAX_COMMENTS_PER_PR)
-      .map((c) => (c.content || "").slice(0, COMMENT_EXCERPT_LENGTH)),
+    approvedBy: r.approvedBy,
+    reviewComments: (r.comments || []).slice(0, MAX_COMMENTS_PER_PR).map((c) => ({
+      author: c.author,
+      text: (c.content || "").slice(0, COMMENT_EXCERPT_LENGTH),
+    })),
     jiraKey: r.jiraKey,
     ticketStatus: r.ticketStatus,
+    ticketSummary: r.ticketSummary,
+    ticketDescription: (r.ticketDescription || "").slice(0, DESCRIPTION_EXCERPT_LENGTH),
+    ticketCommentSample: (r.ticketComments || []).slice(0, MAX_TICKET_COMMENTS_PER_PR).map((c) => ({
+      author: c.author,
+      text: (c.body || "").slice(0, COMMENT_EXCERPT_LENGTH),
+    })),
     reopened: r.reopened,
     reopenCount: r.reopenCount,
   }));
+}
+
+function buildPrompt(author, from, to, metrics, userRecords) {
+  const evidence = buildEvidence(userRecords);
 
   const system = [
-    "You are a senior engineering manager writing a fair, evidence-based performance review",
-    "of one engineer, using only the PR and Jira data provided. Do not invent facts not present",
-    "in the data. Be specific and cite PR ids / ticket keys when making a claim.",
+    "You are a senior engineering manager writing a fair, evidence-based performance review of one",
+    "engineer, using only the PR and Jira data provided — never invent facts not present in the data.",
+    "Every claim you make must be traceable to a specific PR id, ticket key, or quoted comment from the",
+    "evidence packet. Write the review as a clean, well-structured Markdown document a manager could",
+    "paste directly into a report: use '##' section headings exactly as specified, short paragraphs or",
+    "bullet lists (not walls of text), and bold the one or two most important takeaways per section.",
   ].join(" ");
 
   const prompt = `Review engineer "${author}" for the period ${from || "(all time)"} to ${to || "(all time)"}.
 
-Aggregate metrics (computed from all their PRs/tickets in range):
+## Aggregate metrics
+Computed from all of this engineer's PRs/tickets in range (ground truth — do not recompute):
 ${JSON.stringify(metrics, null, 2)}
 
-Sample of up to ${MAX_PRS_IN_PROMPT} PRs (most recent ${sample.length} of ${userRecords.length} total), including review
-comment excerpts where available:
-${JSON.stringify(sample, null, 2)}
+## Evidence packet
+${evidence.length} of ${userRecords.length} total PRs, each with its diffstat, commit messages, review
+comment excerpts, and linked ticket's description/comments where available:
+${JSON.stringify(evidence, null, 2)}
 
-Write a performance review covering, as separate sections:
-1. Delivery — volume and consistency of PRs/tickets shipped, story points delivered.
-2. Code quality — infer cleanliness from review comment volume/tone and PR size; call out any
-   recurring themes in review feedback (e.g. repeated requests for the same kind of fix).
-3. Rework / bug rate — how often this engineer's tickets got reopened and how long it took to
-   land a follow-up PR (see reworkEvents and avgDaysToReworkPr); flag if this is a concern.
-4. Overall summary with 2-3 concrete, actionable suggestions.
+Produce a Markdown document with exactly these sections, in this order:
 
-Keep it concise (under 400 words) and avoid generic filler.`;
+# Performance Review — ${author}
+A one-line byline with the period covered and how many PRs/tickets this covers.
+
+## Executive Summary
+2-4 sentences: the headline assessment, referencing at least one concrete number from the metrics.
+
+## Delivery
+Volume and consistency of PRs/tickets shipped and story points delivered. Cite specific PR ids.
+
+## Code Quality
+What the review comments and diff sizes actually show — quote 1-3 representative review comments
+verbatim (with PR id) as evidence, and call out any recurring theme in the feedback. If comments are
+sparse, say so plainly rather than speculating.
+
+## Rework & Bug Turnaround
+How often this engineer's tickets got reopened and how long it took to land a follow-up PR (see
+reworkEvents / avgDaysToReworkPr in the metrics) — name the specific ticket keys involved. If there
+were no reopens in range, say that plainly instead of padding this section.
+
+## Recommendations
+A numbered list of 2-4 concrete, actionable suggestions, each grounded in something cited above.
+
+## Evidence Log
+A bullet list, one line per PR/ticket actually cited above, formatted as
+"PR #<id> (<repo>) — <one-line reason it's relevant>" or "<TICKET-KEY> — <one-line reason>".
+
+Keep the whole document under 600 words excluding the Evidence Log. No content outside these
+sections, and no generic filler sentences that don't reference the evidence.`;
 
   return { system, prompt };
 }

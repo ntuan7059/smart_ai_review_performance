@@ -41,6 +41,7 @@ async function buildRecord({ repo, pr }) {
     storyPoints: null,
     ticketStatus: null,
     ticketSummary: null,
+    ticketDescription: null,
     ticketComments: [],
     reopened: false,
     reopenCount: 0,
@@ -72,6 +73,7 @@ async function buildRecord({ repo, pr }) {
     storyPoints: ticket.storyPoints,
     ticketStatus: ticket.status,
     ticketSummary: ticket.summary,
+    ticketDescription: ticket.description,
     ticketComments: ticket.comments,
     ...reopenInfo,
   };
