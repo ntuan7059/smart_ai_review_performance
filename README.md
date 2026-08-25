@@ -1,0 +1,173 @@
+# AI Review Performance
+
+Pulls Bitbucket pull requests and their linked Jira tickets into one unified
+record set, so you can see PR review activity (approvals, merges, comments)
+alongside ticket status, story points, and reopen history.
+
+## Tech stack
+
+- **Frontend**: React (Vite), `http://localhost:5173`
+- **Backend**: Node.js + Express, `http://localhost:3001` — proxies all Atlassian
+  calls so tokens never touch the browser and CORS never comes up.
+- **Storage**: SQLite via `better-sqlite3` when it installs cleanly on your
+  platform, otherwise a JSON file (`backend/data/records.json`) — the app
+  picks automatically at boot and logs which one it's using.
+- **Auth**: Basic Auth (email + API token) against both Jira Cloud REST API v3
+  and Bitbucket Cloud REST API v2.0 — separate tokens for each. Bitbucket app
+  passwords are deprecated (fully removed July 28, 2026) — use a Bitbucket
+  API token instead.
+
+## Setup
+
+```bash
+npm run install:all   # installs backend/ and frontend/ deps
+npm run dev           # runs both dev servers concurrently
+```
+
+Or run them separately:
+
+```bash
+cd backend && npm install && npm run dev    # http://localhost:3001
+cd frontend && npm install && npm run dev   # http://localhost:5173
+```
+
+Open `http://localhost:5173`, go to **Settings**, and fill in:
+
+- Atlassian email
+- Atlassian API token ([id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)) — for Jira
+- Jira base URL (e.g. `https://yourdomain.atlassian.net`)
+- Bitbucket API token ([id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)) scoped for
+  Bitbucket — a separate token from the Jira one; app passwords no longer work
+- Bitbucket workspace — pick from a dropdown populated from the workspaces
+  your Bitbucket token can access (click **Refresh** after saving your email
+  + Bitbucket API token)
+- Jira story points field ID (under **Show advanced**) — varies per Jira
+  instance, commonly `customfield_10016`; check **Jira admin → Issues →
+  Custom fields** if unsure
+- AI agent API key and provider (Claude, Codex, or Cursor) — powers the
+  **AI Review** tab; optionally override the model under **Show advanced**
+
+Click **Save settings**, then **Test connection** to confirm Jira and
+Bitbucket both come back ✅.
+
+Credentials are written to `backend/data/config.json`, which is gitignored
+and never leaves your machine except in requests to `*.atlassian.net` and
+`api.bitbucket.org`. They are never logged (see `backend/src/lib/logger.js`,
+which redacts token fields before printing).
+
+## Using the app
+
+1. **Explore PRs** — pick a repo, optional date range/author/state filters,
+   and browse pull requests. Expand a row to see diffstat, commits, review
+   comments, and approval/merge timestamps.
+2. **Sync & Records** — click **Sync** to run the full pipeline (fetch PRs →
+   fetch PR details → extract Jira key from branch/title → fetch ticket →
+   persist). The table below reads from the local store, not from Atlassian,
+   so reloading the page is instant. Filter by author/link-status and sort by
+   any column.
+3. **By Ticket** — the same synced data rolled up per Jira ticket, so a
+   ticket touched by multiple PRs shows as one row with all its PRs listed.
+4. **AI Review** — pick a person and an optional date range, and the
+   configured AI agent (Claude, Codex, or Cursor) writes a performance
+   summary from their synced PRs and tickets: delivery volume, code-quality
+   signals inferred from review comments, and rework/bug turnaround — how
+   long it took to land a follow-up PR after a ticket was reopened. Requires
+   a Sync to have run first, and an AI agent configured in Settings.
+
+### Edge cases surfaced in the UI
+
+- **No ticket key found** in branch or title → `linkStatus: unlinked`,
+  flagged with an orange row tint.
+- **Key extracted but the ticket doesn't exist** (404) or isn't visible (403)
+  → `linkStatus: ambiguous`, with the raw extracted key still shown.
+- **Multiple keys in one branch/title** → the primary key is used, with a
+  "multiple" badge and the full candidate list in a tooltip.
+- **Ticket reopened after Done/Closed/Resolved** → detected from Jira's
+  status changelog; flagged with a reopen-count badge and reopen dates in a
+  tooltip.
+
+## API surface (backend)
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET/POST | `/api/config` | Read/write local settings |
+| POST | `/api/config/test` | Test Jira + Bitbucket auth |
+| GET | `/api/config/jira-projects` | List accessible Jira projects |
+| GET | `/api/config/bitbucket-workspaces` | List accessible Bitbucket workspaces |
+| GET | `/api/bitbucket/repos` | List repos in the configured workspace |
+| GET | `/api/bitbucket/prs` | List PRs (`repo`, `from`, `to`, `author`, `state`) |
+| GET | `/api/bitbucket/prs/:id/details` | Diffstat, commits, comments, approval/merge timestamps |
+| GET | `/api/jira/tickets/:key` | Ticket description, story points, status history, comments |
+| POST | `/api/sync` | Run the full PR↔ticket sync pipeline and persist results |
+| GET | `/api/records` | Read persisted unified records |
+| GET | `/api/records/by-ticket` | Same records grouped by Jira key |
+| GET | `/api/ai-review/authors` | Distinct list of PR authors seen in synced records |
+| POST | `/api/ai-review` | Run an AI performance review for one person (`author`, `from`, `to`) |
+
+Every Atlassian call goes through a shared HTTP client
+(`backend/src/lib/httpClient.js`) that retries 429/5xx responses with
+exponential backoff (honoring `Retry-After` when present), and every route is
+wrapped so failures come back as `{ error: { message, code } }` JSON instead
+of a crash — the frontend surfaces these as toasts.
+
+All timestamps are stored and transmitted as the ISO 8601 UTC strings
+Atlassian returns; the frontend converts to local time only at render time
+(`toLocaleString()`), so sorting/filtering stays timezone-consistent.
+
+## Running the unit tests
+
+```bash
+cd backend && npm test
+```
+
+Covers `extractJiraKey` — the pure function that pulls a `PROJ-123`-style key
+out of a branch name or PR title, preferring the branch, normalizing case,
+and flagging multiple matches.
+
+## Project layout
+
+```
+backend/
+  src/
+    server.js            Express app + error handling
+    lib/                 HTTP client w/ retry, ADF renderer, key extractor, logger
+    config/               Local config persistence
+    services/             Bitbucket, Jira, sync-orchestration, and AI provider/review logic
+    store/                SQLite/JSON record storage abstraction
+    routes/                /api/* route handlers
+    tests/                 node:test unit tests
+frontend/
+  src/
+    pages/                 Settings, Explore PRs, Sync & Records, By Ticket, AI Review
+    components/            Shared UI (status badges, PR detail panel)
+    context/                Toast notifications
+    api.js                  fetch wrapper for the backend
+```
+
+## AI providers (AI Review tab)
+
+Pick one in Settings — all three are called from the backend only, so the
+key never touches the browser:
+
+- **Claude** — Anthropic Messages API via `@anthropic-ai/sdk`, default model
+  `claude-opus-5`. **Avoids a second purchase:** check "Use my Claude
+  Pro/Max subscription instead of an API key" in Settings, after running
+  `ant auth login` once on the machine hosting the backend — the SDK then
+  authenticates with that OAuth profile (the same one Claude Code uses)
+  instead of a metered API key, so usage is billed against the subscription.
+  This is subject to the subscription's own usage limits (lower than paid
+  API rate limits), so heavy or multi-person use may still need a real key.
+- **Codex** — OpenAI Chat Completions API, default model `gpt-5-codex`. No
+  equivalent option here — OpenAI's "Sign in with ChatGPT" usage is scoped
+  to the Codex CLI/IDE/web surfaces, not exposed as a general API credential,
+  so this always needs a separate, separately-billed OpenAI API key.
+- **Cursor** — Cursor's Cloud Agents API (`api.cursor.com/v1/agents`), run as
+  a no-repo background agent; the backend polls the run until it finishes
+  and reads its `result` text. Slower than the other two since it's a full
+  agent run rather than a single completion. **No second purchase needed**
+  either way — a Cursor API key (Cursor dashboard → API Keys) draws from the
+  same monthly usage pool as your existing Cursor plan (Pro includes
+  $20/month of usage).
+
+Override the model per provider with the optional "AI model override" field
+under Settings → Show advanced.
