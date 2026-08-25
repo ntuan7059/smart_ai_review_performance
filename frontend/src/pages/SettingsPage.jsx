@@ -205,7 +205,6 @@ export default function SettingsPage() {
                 id="f-workspace"
                 value={form.bitbucketWorkspace}
                 onChange={(e) => update("bitbucketWorkspace", e.target.value)}
-                required
               >
                 <option value="">{loadingWorkspaces ? "Loading…" : "Select a workspace"}</option>
                 {workspaceOptions.map((w) => (
