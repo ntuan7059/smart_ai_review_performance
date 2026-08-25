@@ -9,7 +9,8 @@ const DEFAULT_MODELS = {
 
 const CURSOR_BASE_URL = "https://api.cursor.com";
 const CURSOR_POLL_INTERVAL_MS = 3000;
-const CURSOR_POLL_TIMEOUT_MS = 120000;
+const CURSOR_POLL_TIMEOUT_MS = 180000;
+const CURSOR_REQUEST_TIMEOUT_MS = 60000;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -54,7 +55,7 @@ async function askCursor({ apiKey, model, system, prompt }) {
   const client = axios.create({
     baseURL: CURSOR_BASE_URL,
     auth: { username: apiKey, password: "" },
-    timeout: 30000,
+    timeout: CURSOR_REQUEST_TIMEOUT_MS,
   });
 
   const createRes = await client.post("/v1/agents", {
