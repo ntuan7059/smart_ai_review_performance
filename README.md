@@ -119,6 +119,13 @@ The backend already sends a permissive `cors()` header
 `onrender.com` domain to the backend's `onrender.com` domain work without
 extra configuration.
 
+The app has client-side routes (`/admin/login`, `/admin`) that don't
+correspond to real files, so the static site needs a rewrite rule sending
+every path to `index.html` and letting React Router take over — otherwise
+Render 404s on a direct visit or refresh of those URLs. `frontend/public/_redirects`
+(`/*    /index.html   200`) already does this and is copied into `dist/` by
+Vite on every build, so no dashboard configuration is needed.
+
 ### Notes
 
 - Both services auto-deploy on push to the connected branch.
