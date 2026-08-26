@@ -11,6 +11,18 @@
   --gray: #5b6270;
   --blue: #4f8cff;
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+
+  /* Dataviz categorical palette — validated for CVD/contrast against --panel (dark). */
+  --series-1: #3987e5; /* blue */
+  --series-2: #d95926; /* orange */
+  --series-3: #199e70; /* aqua */
+  --series-4: #c98500; /* yellow */
+  --series-5: #d55181; /* magenta */
+  --series-6: #9085e9; /* violet */
+  --series-other: #5b6270; /* gray, folded "Other" slot */
+  --status-good: #0ca30c;
+  --status-warning: #fab219;
+  --status-critical: #d03b3b;
 }
 
 * {
@@ -381,4 +393,213 @@ code {
   background: rgba(255, 255, 255, 0.06);
   padding: 1px 5px;
   border-radius: 4px;
+}
+
+/* ---- Admin dashboard ---- */
+
+.admin-login-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.admin-login-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 32px;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.admin-login-card h1 {
+  font-size: 18px;
+  margin: 0;
+}
+
+.admin-login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.admin-shell {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.admin-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.admin-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.kpi-tile {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.kpi-tile .kpi-label {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.kpi-tile .kpi-value {
+  font-size: 26px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.chart-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.chart-card h3 {
+  margin: 0 0 4px;
+  font-size: 14px;
+}
+
+.chart-card .chart-subtitle {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 12px;
+}
+
+.chart-card.chart-card-wide {
+  grid-column: 1 / -1;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.chart-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-legend-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+}
+
+.trend-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.trend-badge-good {
+  background: rgba(12, 163, 12, 0.16);
+  color: var(--status-good);
+}
+
+.trend-badge-critical {
+  background: rgba(208, 59, 59, 0.16);
+  color: var(--status-critical);
+}
+
+.trend-badge-flat {
+  background: rgba(139, 147, 161, 0.16);
+  color: var(--muted);
+}
+
+.vuln-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vuln-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.vuln-row:last-child {
+  border-bottom: none;
+}
+
+.vuln-row a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.vuln-row a:hover {
+  text-decoration: underline;
+}
+
+.vuln-bar-track {
+  grid-column: 1 / -1;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.vuln-bar-fill {
+  height: 100%;
+  background: var(--series-1);
+  border-radius: 3px;
+}
+
+.mapping-editor summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.mapping-row-input {
+  width: 100%;
+  max-width: 280px;
 }

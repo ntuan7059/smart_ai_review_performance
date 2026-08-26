@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { asyncHandler } from "../lib/asyncHandler.js";
 import { listWatchItems, pollNewPrs, reviewWatchedPr } from "../services/prWatchService.js";
+import { appendEvent } from "../store/usageEventStore.js";
+import { resolveEmail } from "../store/authorEmailStore.js";
 
 const router = Router();
 
@@ -24,6 +26,14 @@ router.post(
   asyncHandler(async (req, res) => {
     const item = await reviewWatchedPr({ repo: req.params.repo, prId: req.params.id });
     if (!item) return res.status(404).json({ error: { message: "PR not found in today's watch list." } });
+    appendEvent({
+      type: "pr_review",
+      repo: req.params.repo,
+      prId: req.params.id,
+      author: item.author,
+      authorUsername: item.authorUsername,
+      authorEmail: resolveEmail(item.author, item.authorUsername),
+    });
     res.json(item);
   })
 );

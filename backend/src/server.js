@@ -13,6 +13,7 @@ import jiraRoutes from "./routes/jira.js";
 import syncRoutes from "./routes/sync.js";
 import aiReviewRoutes from "./routes/aiReview.js";
 import prWatchRoutes from "./routes/prWatch.js";
+import adminRoutes from "./routes/admin.js";
 
 // Load backend/.env if present, without adding a dependency.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -43,6 +44,7 @@ app.use("/api", jiraRoutes);
 app.use("/api", syncRoutes);
 app.use("/api", aiReviewRoutes);
 app.use("/api", prWatchRoutes);
+app.use("/api", adminRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: { message: "Not found" } });
