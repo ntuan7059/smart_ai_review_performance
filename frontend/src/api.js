@@ -19,6 +19,7 @@ async function request(path, options = {}) {
     const message = body?.error?.message || `Request failed: ${res.status}`;
     const error = new Error(message);
     error.status = res.status;
+    error.code = body?.error?.code;
     error.body = body;
     throw error;
   }

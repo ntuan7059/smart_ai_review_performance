@@ -15,6 +15,7 @@ export default function ByTicketPage() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(null);
+  const [notConfigured, setNotConfigured] = useState(false);
 
   useEffect(() => {
     api
@@ -23,7 +24,10 @@ export default function ByTicketPage() {
         setRepos(r);
         if (r.length && !repo) setRepo(r[0].slug);
       })
-      .catch((err) => toast.error(err.message));
+      .catch((err) => {
+        if (err.code === "NOT_CONFIGURED") setNotConfigured(true);
+        else toast.error(err.message);
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -45,6 +49,12 @@ export default function ByTicketPage() {
         Rolls up all synced PRs by the Jira ticket they reference. Tickets touched by more than one PR are
         grouped here instead of being overwritten.
       </p>
+
+      {notConfigured && (
+        <div className="banner banner-info">
+          Bitbucket is not configured yet. Fill in Settings to see tickets.
+        </div>
+      )}
 
       <div className="filter-bar">
         <label>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
+import { useConfigStatus } from "../context/ConfigStatusContext.jsx";
 
 const EMPTY_FORM = {
   atlassianEmail: "",
@@ -23,6 +24,7 @@ const AI_PROVIDERS = [
 
 export default function SettingsPage() {
   const toast = useToast();
+  const configStatus = useConfigStatus();
   const [form, setForm] = useState(EMPTY_FORM);
   const [tokenSet, setTokenSet] = useState({ atlassian: false, bitbucket: false, ai: false });
   const [saving, setSaving] = useState(false);
@@ -83,7 +85,7 @@ export default function SettingsPage() {
       await api.saveConfig(form);
       toast.success("Settings saved.");
       setForm((f) => ({ ...f, atlassianApiToken: "", bitbucketApiToken: "", aiApiKey: "" }));
-      const cfg = await api.getConfig();
+      const cfg = await configStatus.refresh();
       setTokenSet({
         atlassian: cfg.atlassianApiTokenSet,
         bitbucket: cfg.bitbucketApiTokenSet,
@@ -107,6 +109,7 @@ export default function SettingsPage() {
       } else {
         toast.error("One or more connections failed. See details below.");
       }
+      await configStatus.refresh();
     } catch (err) {
       toast.error(err.message);
     } finally {
