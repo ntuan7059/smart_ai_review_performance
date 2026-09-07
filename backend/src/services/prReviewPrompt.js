@@ -7,7 +7,6 @@ export function buildPrReviewPrompt({ evidence, prDiff }) {
     "(2) produce durable signals a later member review can aggregate — habits, not one-off process noise.",
     "Use only the evidence and the attached unified PR diff. Never invent files, tests, comments, or ticket facts.",
     "Prefer the diff over metadata. If the diff is missing or truncated, say so — do not pick excellent completeness.",
-    "Do not output a 1–10 score. The server computes the score from your labels and signals.",
     "Ignore lockfiles, generated files, and “PR not yet approved” unless they hide a real engineering issue.",
     "Strengths must be reusable skills (scope discipline, tests, error handling, clarity), not “title matches ticket”.",
     "Improvements must be actionable (what to change, where). Cite a file path when possible.",
@@ -52,13 +51,13 @@ Return JSON with exactly these keys:
   "summary": "1 sentence: what this PR actually delivered vs the ticket",
   "ticketComplexity": "low" | "medium" | "high",
   "codeCompleteness": "incomplete" | "adequate" | "solid" | "excellent",
-  "scoreRationale": "1 sentence: evidence for those two labels (not a numeric score)",
+  "labelRationale": "1 sentence: evidence for those two labels",
   "strengths": ["reusable engineering habit, with file if useful"],
   "improvements": ["path/or-area: what is wrong and what to do instead"],
   "signals": ["tests-missing"]
 }
 
-Do not include a score field. Labels must be evidence-based; inflating them is a review failure.
+Do not include a score or rating. Labels must be evidence-based.
 
 ticketComplexity (prefer the diff over story points; null points are not a signal):
 - low: localized / obvious (typo, copy, config, one-file fix)
@@ -77,7 +76,7 @@ signals must be a subset of: ${signalList}
 1–3 strengths, 1–4 improvements. Each item ≤ 20 words.
 Improvements are the main value. If the PR is strong, still name 1 residual risk or test gap, or a single item "none beyond nits".
 Do not restate the ticket title. Do not mention story points being null unless that blocked judging complexity.
-If there is no linked ticket, infer complexity from the diff only and say that in scoreRationale.
+If there is no linked ticket, infer complexity from the diff only and say that in labelRationale.
 JSON only.`;
 
   return { system, prompt };

@@ -3,12 +3,8 @@ import assert from "node:assert/strict";
 import { parseAiJson } from "../lib/parseAiJson.js";
 import {
   normalizeAssessment,
-  averageScore,
   formatPrReviewMarkdown,
   countSignals,
-  scoresByComplexity,
-  computePrReviewScore,
-  SCORE_MATRIX,
 } from "../lib/prReviewSchema.js";
 import { filterPrReviews } from "../store/prReviewStore.js";
 import { matchesAuthor } from "../lib/authorIdentity.js";
@@ -28,7 +24,7 @@ test("parseAiJson returns null on garbage", () => {
   assert.equal(parseAiJson(""), null);
 });
 
-test("normalizeAssessment ignores LLM score and computes from labels", () => {
+test("normalizeAssessment keeps labels and ignores LLM score", () => {
   const out = normalizeAssessment({
     strengths: ["clear structure", ""],
     weaknesses: ["missing tests"],
@@ -38,8 +34,8 @@ test("normalizeAssessment ignores LLM score and computes from labels", () => {
     codeCompleteness: "nope",
     summary: "Shipped the login flow.",
   });
-  assert.equal(out.score, 7);
-  assert.equal(out.scoreBreakdown.base, 7);
+  assert.equal(out.score, undefined);
+  assert.equal(out.scoreBreakdown, undefined);
   assert.deepEqual(out.strengths, ["clear structure"]);
   assert.deepEqual(out.improvements, ["missing tests"]);
   assert.deepEqual(out.weaknesses, ["missing tests"]);
@@ -56,7 +52,6 @@ test("normalizeAssessment shortens verbose review text", () => {
     score: 7,
   });
   assert.equal(out.strengths.length, 3);
-  assert.equal(out.score, 6);
   assert.ok(out.improvements[0].endsWith("…"));
   assert.ok(out.weaknesses[0].endsWith("…"));
   assert.ok(out.summary.length <= 221);
@@ -74,55 +69,6 @@ test("normalizeAssessment prefers improvements and keeps allowed signals", () =>
   assert.deepEqual(out.improvements, ["mixpanelService.js: send entitlementId on every event"]);
   assert.deepEqual(out.weaknesses, out.improvements);
   assert.deepEqual(out.signals, ["tests-missing", "tight-scope"]);
-  assert.equal(out.score, 5);
-});
-
-test("computePrReviewScore uses the completeness × complexity matrix", () => {
-  for (const [completeness, row] of Object.entries(SCORE_MATRIX)) {
-    for (const [complexity, expected] of Object.entries(row)) {
-      const out = computePrReviewScore({ ticketComplexity: complexity, codeCompleteness: completeness });
-      assert.equal(out.score, expected, `${completeness} × ${complexity}`);
-    }
-  }
-});
-
-test("computePrReviewScore applies signal penalties and evidence caps", () => {
-  const penalized = computePrReviewScore({
-    ticketComplexity: "high",
-    codeCompleteness: "excellent",
-    signals: ["tests-missing", "security-risk", "tests-missing"],
-  });
-  assert.equal(penalized.base, 9);
-  assert.equal(penalized.score, 7);
-
-  const truncated = computePrReviewScore({
-    ticketComplexity: "high",
-    codeCompleteness: "excellent",
-    truncated: true,
-  });
-  assert.equal(truncated.score, 7);
-  assert.equal(truncated.capReason, "truncated-diff");
-
-  const missing = computePrReviewScore({
-    ticketComplexity: "high",
-    codeCompleteness: "solid",
-    missingDiff: true,
-  });
-  assert.equal(missing.score, 6);
-  assert.equal(missing.capReason, "missing-diff");
-});
-
-test("normalizeAssessment caps score when the diff is truncated", () => {
-  const out = normalizeAssessment(
-    { ticketComplexity: "high", codeCompleteness: "excellent", signals: [] },
-    { truncated: true }
-  );
-  assert.equal(out.score, 7);
-});
-
-test("averageScore ignores missing scores", () => {
-  assert.equal(averageScore([{ score: 8 }, { score: 6 }, { score: null }]), 7);
-  assert.equal(averageScore([]), null);
 });
 
 test("countSignals tallies tags across reviews", () => {
@@ -136,20 +82,7 @@ test("countSignals tallies tags across reviews", () => {
   );
 });
 
-test("scoresByComplexity averages within each bucket", () => {
-  const out = scoresByComplexity([
-    { ticketComplexity: "high", score: 7 },
-    { ticketComplexity: "high", score: 5 },
-    { ticketComplexity: "low", score: 9 },
-    { ticketComplexity: "medium", score: null },
-  ]);
-  assert.equal(out.high.avgScore, 6);
-  assert.equal(out.high.count, 2);
-  assert.equal(out.low.avgScore, 9);
-  assert.equal(out.medium.avgScore, null);
-});
-
-test("formatPrReviewMarkdown includes score and lists", () => {
+test("formatPrReviewMarkdown includes labels and lists", () => {
   const md = formatPrReviewMarkdown({
     prId: 12,
     title: "Add login",
@@ -158,16 +91,6 @@ test("formatPrReviewMarkdown includes score and lists", () => {
     state: "MERGED",
     jiraKey: "PROJ-1",
     storyPoints: 3,
-    score: 7,
-    scoreBreakdown: {
-      method: "matrix",
-      ticketComplexity: "medium",
-      codeCompleteness: "solid",
-      base: 7,
-      penalties: [],
-      uncapped: 7,
-      score: 7,
-    },
     scoreRationale: "Matches ticket.",
     ticketComplexity: "medium",
     codeCompleteness: "solid",
@@ -176,8 +99,9 @@ test("formatPrReviewMarkdown includes score and lists", () => {
     weaknesses: ["no rate limit"],
   });
   assert.match(md, /# PR Review — #12 Add login/);
-  assert.match(md, /## Score: 7\/10/);
-  assert.match(md, /7 \(solid × medium\)/);
+  assert.match(md, /Ticket complexity: \*\*medium\*\*/);
+  assert.match(md, /Code completeness: \*\*solid\*\*/);
+  assert.doesNotMatch(md, /## Score/);
   assert.match(md, /PROJ-1 \(3 pts\)/);
   assert.match(md, /- tests/);
   assert.match(md, /## Improvements/);

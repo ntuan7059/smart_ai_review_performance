@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import Markdown from "../components/Markdown.jsx";
-import { ScoreBadge } from "../components/PrReviewPanel.jsx";
+import { CompletenessBadge } from "../components/PrReviewPanel.jsx";
 
 const METRIC_LABELS = [
   ["totalPRs", "Total PRs"],
@@ -16,14 +16,12 @@ const METRIC_LABELS = [
   ["reopenedTicketCount", "Reopen events"],
   ["avgDaysToReworkPr", "Avg days to fix (rework)"],
   ["savedReviews", "Saved PR reviews"],
-  ["avgScore", "Avg PR score"],
 ];
 
 function formatMetric(key, value) {
   if (value === null || value === undefined) return "—";
   if (key === "approvalRate") return `${Math.round(value * 100)}%`;
   if (key === "avgDaysToReworkPr") return `${value}d`;
-  if (key === "avgScore") return `${value}/10`;
   return value;
 }
 
@@ -85,7 +83,7 @@ export default function PerformanceReviewPage({ active = true }) {
     <div className="page">
       <h2>Review member</h2>
       <p className="muted">
-        Synthesize <strong>saved per-PR reviews</strong> in the date range (strengths, improvements, signals, formula scores).
+        Synthesize <strong>saved per-PR reviews</strong> in the date range (strengths, improvements, signals).
         Review individual PRs first on Review PR.
       </p>
 
@@ -133,7 +131,6 @@ export default function PerformanceReviewPage({ active = true }) {
           {result.coverage && (
             <div className="banner banner-info" style={{ marginBottom: 16 }}>
               <strong>Saved PR reviews:</strong> {result.coverage.savedReviews} review(s)
-              {result.coverage.avgScore != null ? ` · avg score ${result.coverage.avgScore}/10` : ""}
               {result.coverage.syncedPRs
                 ? ` · ${result.coverage.syncedPRs} synced PR(s) in range`
                 : ""}
@@ -162,7 +159,6 @@ export default function PerformanceReviewPage({ active = true }) {
                   <tr>
                     <th>PR</th>
                     <th>Title</th>
-                    <th>Score</th>
                     <th>Complexity</th>
                     <th>Completeness</th>
                     <th>Strengths</th>
@@ -178,11 +174,10 @@ export default function PerformanceReviewPage({ active = true }) {
                         </a>
                       </td>
                       <td>{r.title}</td>
-                      <td>
-                        <ScoreBadge score={r.score} />
-                      </td>
                       <td>{r.ticketComplexity || "—"}</td>
-                      <td>{r.codeCompleteness || "—"}</td>
+                      <td>
+                        <CompletenessBadge value={r.codeCompleteness} />
+                      </td>
                       <td className="muted small">{(r.strengths || []).slice(0, 2).join("; ") || "—"}</td>
                       <td className="muted small">{(r.improvements || r.weaknesses || []).slice(0, 2).join("; ") || "—"}</td>
                     </tr>

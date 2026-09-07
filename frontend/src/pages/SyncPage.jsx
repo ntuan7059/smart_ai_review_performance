@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
-import PrReviewPanel, { ScoreBadge } from "../components/PrReviewPanel.jsx";
+import PrReviewPanel, { CompletenessBadge } from "../components/PrReviewPanel.jsx";
 import { defaultFrom, defaultTo } from "../lib/dates.js";
 
 function formatDate(iso) {
@@ -161,14 +161,13 @@ export default function SyncPage() {
       setReviewStatuses((prev) => ({
         ...prev,
         [key]: {
-          score: review.score,
           reviewedAt: review.reviewedAt,
           ticketComplexity: review.ticketComplexity,
           codeCompleteness: review.codeCompleteness,
         },
       }));
       setOpenReview(review);
-      toast.success(`Saved review for #${record.prId} (${review.score ?? "n/a"}/10).`);
+      toast.success(`Saved review for #${record.prId}.`);
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -290,7 +289,7 @@ export default function SyncPage() {
                 <th>Status</th>
                 <th>Pts</th>
                 <th>Reopened</th>
-                <th>Score</th>
+                <th>Completeness</th>
                 <th>Review</th>
               </tr>
             </thead>
@@ -367,7 +366,7 @@ export default function SyncPage() {
                           onClick={() => handleViewReview(r)}
                           title="View review"
                         >
-                          <ScoreBadge score={status.score} />
+                          <CompletenessBadge value={status.codeCompleteness} empty="Reviewed" />
                         </button>
                       ) : (
                         <span className="muted">—</span>

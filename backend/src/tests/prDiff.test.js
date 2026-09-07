@@ -79,8 +79,8 @@ test("buildPrReviewPrompt attaches filtered diff as primary evidence", () => {
   });
   assert.match(system, /unified PR diff/);
   assert.match(system, /two jobs/);
-  assert.match(system, /server computes/);
   assert.match(prompt, /improvements/);
+  assert.match(prompt, /labelRationale/);
   assert.doesNotMatch(prompt, /"score":/);
   assert.match(prompt, /src\/app\.js/);
   assert.match(prompt, /package-lock\.json \(lockfile\)/);

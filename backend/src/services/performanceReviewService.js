@@ -7,7 +7,7 @@ import { buildPerformanceReviewPrompt, buildMemberReviewFromPrReviewsPrompt } fr
 import { askAi } from "./aiProviderService.js";
 import { AtlassianApiError } from "../lib/httpClient.js";
 import { listPrReviews } from "../store/prReviewStore.js";
-import { averageScore, countBy, countSignals, scoresByComplexity, formatScoreBreakdown } from "../lib/prReviewSchema.js";
+import { countBy, countSignals } from "../lib/prReviewSchema.js";
 import { logError } from "../lib/logger.js";
 import { matchesAuthor, authorLabel } from "../lib/authorIdentity.js";
 
@@ -262,15 +262,12 @@ async function reviewUserFromSavedPrReviews({
     prCreatedAt: r.prCreatedAt,
     jiraKey: r.jiraKey,
     storyPoints: r.storyPoints,
-    score: r.score,
-    scoreRationale: r.scoreRationale,
     ticketComplexity: r.ticketComplexity,
     codeCompleteness: r.codeCompleteness,
     strengths: r.strengths,
     weaknesses: r.improvements || r.weaknesses,
     improvements: r.improvements || r.weaknesses,
     signals: r.signals || [],
-    scoreFormula: r.scoreBreakdown ? formatScoreBreakdown(r.scoreBreakdown) : null,
     summary: r.summary,
   }));
 
@@ -292,11 +289,9 @@ async function reviewUserFromSavedPrReviews({
     savedReviews: prReviews.length,
     syncedPRs: userRecords.length,
     unreviewedCount,
-    avgScore: averageScore(prReviews),
     complexity: countBy(prReviews, "ticketComplexity"),
     completeness: countBy(prReviews, "codeCompleteness"),
     signalCounts: countSignals(prReviews),
-    scoresByComplexity: scoresByComplexity(prReviews),
   };
 
   const { system, prompt } = buildMemberReviewFromPrReviewsPrompt(
@@ -323,7 +318,7 @@ async function reviewUserFromSavedPrReviews({
     to: to || null,
     provider: cfg.aiProvider,
     mode: "pr-reviews",
-    metrics: { ...metrics, avgScore: coverage.avgScore, savedReviews: coverage.savedReviews },
+    metrics: { ...metrics, savedReviews: coverage.savedReviews },
     coverage,
     prReviews,
     review,

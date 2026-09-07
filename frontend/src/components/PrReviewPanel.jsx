@@ -3,16 +3,16 @@ import { createPortal } from "react-dom";
 import Markdown from "./Markdown.jsx";
 import StatusBadge from "./StatusBadge.jsx";
 
-function scoreTone(score) {
-  if (score == null) return "badge-gray";
-  if (score >= 8) return "badge-green";
-  if (score >= 6) return "badge-orange";
-  return "badge-red";
-}
+const COMPLETENESS_TONE = {
+  incomplete: "badge-red",
+  adequate: "badge-orange",
+  solid: "badge-green",
+  excellent: "badge-green",
+};
 
-export function ScoreBadge({ score }) {
-  if (score == null) return <span className="muted">—</span>;
-  return <StatusBadge value={`${score}/10`} tone={scoreTone(score)} />;
+export function CompletenessBadge({ value, empty = "—" }) {
+  if (!value) return <span className="muted">{empty}</span>;
+  return <StatusBadge value={value} tone={COMPLETENESS_TONE[value] || "badge-gray"} />;
 }
 
 function BulletList({ items, empty }) {
@@ -49,16 +49,6 @@ function clipDisplay(text, max) {
   return `${(at > max * 0.55 ? cut.slice(0, at) : cut).trimEnd()}…`;
 }
 
-function formatScoreBreakdown(breakdown) {
-  if (!breakdown || breakdown.score == null) return "";
-  const bits = [`${breakdown.base} (${breakdown.codeCompleteness} × ${breakdown.ticketComplexity})`];
-  for (const item of breakdown.penalties || []) bits.push(`− ${item.signal}`);
-  if (breakdown.capReason && breakdown.uncapped > breakdown.score) {
-    bits.push(breakdown.capReason === "missing-diff" ? "no-diff cap 6" : "truncated cap 7");
-  }
-  return `${bits.join(" · ")} → ${breakdown.score}/10`;
-}
-
 export default function PrReviewPanel({ review, onClose }) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -91,7 +81,6 @@ export default function PrReviewPanel({ review, onClose }) {
     ? `${review.jiraKey}${review.storyPoints != null ? ` (${review.storyPoints} pts)` : ""}`
     : null;
 
-  const formula = formatScoreBreakdown(review.scoreBreakdown);
   const summary = clipDisplay(review.summary, 220);
   const rationale = clipDisplay(review.scoreRationale, 160);
   const strengths = (review.strengths || []).slice(0, 3);
@@ -127,24 +116,16 @@ export default function PrReviewPanel({ review, onClose }) {
         <div className="review-dialog-body">
           <div className="review-dialog-metrics">
             <div className="metric-card">
-              <div className="metric-value">
-                <ScoreBadge score={review.score} />
-              </div>
-              <div className="metric-label">
-                {review.scoreBreakdown?.method === "matrix" ? "Score (formula)" : "Score"}
-              </div>
-            </div>
-            <div className="metric-card">
               <div className="metric-value">{review.ticketComplexity || "—"}</div>
               <div className="metric-label">Ticket complexity</div>
             </div>
             <div className="metric-card">
-              <div className="metric-value">{review.codeCompleteness || "—"}</div>
+              <div className="metric-value">
+                <CompletenessBadge value={review.codeCompleteness} />
+              </div>
               <div className="metric-label">Code completeness</div>
             </div>
           </div>
-
-          {formula ? <p className="muted small">{formula}</p> : null}
 
           {summary || rationale ? (
             <p className="review-dialog-summary">
