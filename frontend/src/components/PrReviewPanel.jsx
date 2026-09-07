@@ -49,6 +49,16 @@ function clipDisplay(text, max) {
   return `${(at > max * 0.55 ? cut.slice(0, at) : cut).trimEnd()}…`;
 }
 
+function formatScoreBreakdown(breakdown) {
+  if (!breakdown || breakdown.score == null) return "";
+  const bits = [`${breakdown.base} (${breakdown.codeCompleteness} × ${breakdown.ticketComplexity})`];
+  for (const item of breakdown.penalties || []) bits.push(`− ${item.signal}`);
+  if (breakdown.capReason && breakdown.uncapped > breakdown.score) {
+    bits.push(breakdown.capReason === "missing-diff" ? "no-diff cap 6" : "truncated cap 7");
+  }
+  return `${bits.join(" · ")} → ${breakdown.score}/10`;
+}
+
 export default function PrReviewPanel({ review, onClose }) {
   const dialogRef = useRef(null);
   const onCloseRef = useRef(onClose);
@@ -81,10 +91,12 @@ export default function PrReviewPanel({ review, onClose }) {
     ? `${review.jiraKey}${review.storyPoints != null ? ` (${review.storyPoints} pts)` : ""}`
     : null;
 
+  const formula = formatScoreBreakdown(review.scoreBreakdown);
   const summary = clipDisplay(review.summary, 220);
   const rationale = clipDisplay(review.scoreRationale, 160);
   const strengths = (review.strengths || []).slice(0, 3);
-  const weaknesses = (review.weaknesses || []).slice(0, 3);
+  const improvements = (review.improvements || review.weaknesses || []).slice(0, 4);
+  const signals = review.signals || [];
 
   return createPortal(
     <dialog
@@ -118,7 +130,9 @@ export default function PrReviewPanel({ review, onClose }) {
               <div className="metric-value">
                 <ScoreBadge score={review.score} />
               </div>
-              <div className="metric-label">Score</div>
+              <div className="metric-label">
+                {review.scoreBreakdown?.method === "matrix" ? "Score (formula)" : "Score"}
+              </div>
             </div>
             <div className="metric-card">
               <div className="metric-value">{review.ticketComplexity || "—"}</div>
@@ -129,6 +143,8 @@ export default function PrReviewPanel({ review, onClose }) {
               <div className="metric-label">Code completeness</div>
             </div>
           </div>
+
+          {formula ? <p className="muted small">{formula}</p> : null}
 
           {summary || rationale ? (
             <p className="review-dialog-summary">
@@ -143,12 +159,27 @@ export default function PrReviewPanel({ review, onClose }) {
               <BulletList items={strengths} empty="None recorded." />
             </section>
             <section className="detail-section">
-              <h4>Weaknesses</h4>
-              <BulletList items={weaknesses} empty="None recorded." />
+              <h4>Improvements</h4>
+              <BulletList items={improvements} empty="None recorded." />
             </section>
           </div>
 
-          {!review.summary && !review.scoreRationale && !review.strengths?.length && !review.weaknesses?.length && review.reviewDocument ? (
+          {signals.length ? (
+            <p className="muted small" style={{ marginTop: 10 }}>
+              {signals.map((s) => (
+                <span key={s} className="badge badge-gray" style={{ marginRight: 6 }}>
+                  {s}
+                </span>
+              ))}
+            </p>
+          ) : null}
+
+          {!review.summary &&
+          !review.scoreRationale &&
+          !review.strengths?.length &&
+          !review.improvements?.length &&
+          !review.weaknesses?.length &&
+          review.reviewDocument ? (
             <section className="detail-section">
               <Markdown text={review.reviewDocument} />
             </section>

@@ -85,8 +85,8 @@ export default function PerformanceReviewPage({ active = true }) {
     <div className="page">
       <h2>Review member</h2>
       <p className="muted">
-        Synthesize <strong>saved per-PR reviews</strong> in the date range (strengths, weaknesses, scores from
-        ticket complexity and code completeness). Review individual PRs first on Review PR.
+        Synthesize <strong>saved per-PR reviews</strong> in the date range (strengths, improvements, signals, formula scores).
+        Review individual PRs first on Review PR.
       </p>
 
       <form className="filter-bar" onSubmit={handleRun}>
@@ -166,7 +166,7 @@ export default function PerformanceReviewPage({ active = true }) {
                     <th>Complexity</th>
                     <th>Completeness</th>
                     <th>Strengths</th>
-                    <th>Weaknesses</th>
+                    <th>Improvements</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -184,7 +184,7 @@ export default function PerformanceReviewPage({ active = true }) {
                       <td>{r.ticketComplexity || "—"}</td>
                       <td>{r.codeCompleteness || "—"}</td>
                       <td className="muted small">{(r.strengths || []).slice(0, 2).join("; ") || "—"}</td>
-                      <td className="muted small">{(r.weaknesses || []).slice(0, 2).join("; ") || "—"}</td>
+                      <td className="muted small">{(r.improvements || r.weaknesses || []).slice(0, 2).join("; ") || "—"}</td>
                     </tr>
                   ))}
                 </tbody>
