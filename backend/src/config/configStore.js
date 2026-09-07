@@ -20,6 +20,9 @@ const DEFAULTS = {
   // (the same credential Claude Code uses) instead of a metered API key, so a
   // Claude Pro/Max seat can power reviews without separate API billing.
   aiUseClaudeSubscription: process.env.AI_USE_CLAUDE_SUBSCRIPTION === "true",
+  // Parent directory of local git clones for AI Review (required for code diff analysis).
+  // Diffs are read via `git show` on this machine only — never from Bitbucket API.
+  localRepoRoot: process.env.LOCAL_REPO_ROOT || "",
 };
 
 function ensureDataDir() {
@@ -61,5 +64,6 @@ export function redactedConfig() {
     aiModel: cfg.aiModel,
     aiApiKeySet: Boolean(cfg.aiApiKey),
     aiUseClaudeSubscription: Boolean(cfg.aiUseClaudeSubscription),
+    localRepoRoot: cfg.localRepoRoot || "",
   };
 }

@@ -1,20 +1,14 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { ToastProvider } from "./context/ToastContext.jsx";
 import { ConfigStatusProvider, useConfigStatus } from "./context/ConfigStatusContext.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
-import PRExplorerPage from "./pages/PRExplorerPage.jsx";
 import SyncPage from "./pages/SyncPage.jsx";
-import ByTicketPage from "./pages/ByTicketPage.jsx";
 import PerformanceReviewPage from "./pages/PerformanceReviewPage.jsx";
-import PrWatchPage from "./pages/PrWatchPage.jsx";
 
 const TABS = [
+  { key: "sync", label: "Review PR", Component: SyncPage, requires: "integrations" },
+  { key: "aiReview", label: "Review member", Component: PerformanceReviewPage, requires: "integrations" },
   { key: "settings", label: "Settings", Component: SettingsPage, requires: null },
-  { key: "explore", label: "Explore PRs", Component: PRExplorerPage, requires: "integrations" },
-  { key: "sync", label: "Sync & Records", Component: SyncPage, requires: "integrations" },
-  { key: "byTicket", label: "By Ticket", Component: ByTicketPage, requires: "integrations" },
-  { key: "aiReview", label: "AI Review", Component: PerformanceReviewPage, requires: "integrations" },
-  { key: "prWatch", label: "PR Watch", Component: PrWatchPage, requires: "integrations" },
 ];
 
 const LOCK_TOOLTIP = "Connect Jira and Bitbucket successfully in Settings first";
@@ -51,18 +45,30 @@ function isLocked(t, configStatus) {
 
 function Shell() {
   const [tab, setTab] = useState("settings");
+  const pickedInitialTab = useRef(false);
   const configStatus = useConfigStatus();
+  const settingsOk = configStatus.jiraConnected && configStatus.bitbucketConnected;
 
-  // If the active tab's requirement stops being met (e.g. a connection starts
-  // failing after the user edits Settings), bounce back to Settings instead of
-  // leaving a locked page on screen.
   useEffect(() => {
+    if (!configStatus.loaded) return;
+
+    if (!pickedInitialTab.current) {
+      pickedInitialTab.current = true;
+      setTab(settingsOk ? "sync" : "settings");
+      return;
+    }
+
     const active = TABS.find((t) => t.key === tab);
     if (active && isLocked(active, configStatus)) setTab("settings");
-  }, [tab, configStatus]);
+  }, [tab, configStatus, settingsOk]);
 
   return (
     <div className="app-shell">
+      {!configStatus.loaded && (
+        <div className="boot-mask" role="status" aria-label="Loading" aria-live="polite">
+          <div className="boot-spinner" aria-hidden="true" />
+        </div>
+      )}
       <header className="app-header">
         <h1>AI Review Performance</h1>
         <nav className="tab-nav">
@@ -85,10 +91,7 @@ function Shell() {
         </nav>
       </header>
       <main>
-        {/* All unlocked tabs stay mounted (just hidden) so switching tabs never discards a
-            page's state — e.g. an in-progress AI Review result or the PR Watch list/poll
-            timer. Locked tabs aren't mounted at all, so they can't fire API calls before
-            Jira and Bitbucket are both verified reachable. */}
+        {/* Unlocked tabs stay mounted (just hidden) so switching never discards page state. */}
         {TABS.map((t) => {
           const locked = isLocked(t, configStatus);
           return (
@@ -104,7 +107,7 @@ function Shell() {
                     </div>
                   </div>
                 ) : (
-                  <t.Component />
+                  <t.Component active={t.key === tab} />
                 )}
               </ErrorBoundary>
             </div>

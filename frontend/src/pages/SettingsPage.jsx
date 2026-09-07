@@ -65,9 +65,25 @@ export default function SettingsPage() {
 
   async function handleVerifyWorkspace() {
     if (!form.bitbucketWorkspace) return toast.error("Type a workspace slug first.");
+    if (!form.atlassianEmail) return toast.error("Fill in Atlassian email first.");
+    if (!tokenSet.bitbucket && !form.bitbucketApiToken.trim()) {
+      return toast.error("Paste your Bitbucket API token, then click Save settings before Verify.");
+    }
+
     setVerifyingWorkspace(true);
     setWorkspaceVerified(null);
     try {
+      // Verify reads saved backend config, not the unsaved form — persist first if needed.
+      if (form.bitbucketApiToken.trim() || !tokenSet.bitbucket) {
+        await api.saveConfig(form);
+        setForm((f) => ({ ...f, atlassianApiToken: "", bitbucketApiToken: "", aiApiKey: "" }));
+        const cfg = await configStatus.refresh();
+        setTokenSet({
+          atlassian: cfg.atlassianApiTokenSet,
+          bitbucket: cfg.bitbucketApiTokenSet,
+          ai: cfg.aiApiKeySet,
+        });
+      }
       const result = await api.verifyBitbucketWorkspace(form.bitbucketWorkspace);
       setWorkspaceVerified(result);
       toast.success(`Found workspace "${result.name}".`);
@@ -228,7 +244,7 @@ export default function SettingsPage() {
 
         <h3 style={{ gridColumn: "1 / -1", margin: "8px 0 0" }}>AI agent</h3>
         <p className="muted small" style={{ gridColumn: "1 / -1", margin: "-8px 0 0" }}>
-          Powers the <strong>AI Review</strong> tab, which writes a performance summary for a chosen person from
+          Powers the <strong>Review member</strong> tab, which writes a performance summary for a chosen person from
           their synced PR/ticket data. Note: a Claude Pro/Max, ChatGPT Plus/Pro, or Cursor Pro subscription is
           billed separately from that provider's API — see the notes below for which providers can still avoid a
           second purchase.

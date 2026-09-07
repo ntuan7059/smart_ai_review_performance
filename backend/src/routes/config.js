@@ -33,6 +33,7 @@ router.post(
       aiApiKey,
       aiModel,
       aiUseClaudeSubscription,
+      localRepoRoot,
     } = req.body || {};
 
     if (aiProvider && !AI_PROVIDERS.has(aiProvider)) {
@@ -52,6 +53,7 @@ router.post(
     if (aiApiKey) update.aiApiKey = aiApiKey; // only overwrite if provided
     if (aiModel !== undefined) update.aiModel = aiModel;
     if (aiUseClaudeSubscription !== undefined) update.aiUseClaudeSubscription = Boolean(aiUseClaudeSubscription);
+    if (localRepoRoot !== undefined) update.localRepoRoot = localRepoRoot;
 
     writeConfig(update);
     res.json(redactedConfig());

@@ -72,7 +72,7 @@ export function addItemIfNew(item) {
   return state.items[key];
 }
 
-export function saveReview(repo, prId, document) {
+export function saveReview(repo, prId, document, extra = {}) {
   const state = readState();
   const key = itemKey(repo, prId);
   if (!state.items[key]) return null;
@@ -81,6 +81,11 @@ export function saveReview(repo, prId, document) {
     status: "reviewed",
     reviewDocument: document,
     reviewedAt: new Date().toISOString(),
+    score: extra.score ?? null,
+    strengths: extra.strengths || [],
+    weaknesses: extra.weaknesses || [],
+    ticketComplexity: extra.ticketComplexity || null,
+    codeCompleteness: extra.codeCompleteness || null,
   };
   writeState(state);
   return state.items[key];

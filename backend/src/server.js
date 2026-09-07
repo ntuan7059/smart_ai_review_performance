@@ -5,14 +5,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { log, logError } from "./lib/logger.js";
 import { AtlassianApiError } from "./lib/httpClient.js";
-import { startPrWatchScheduler } from "./lib/scheduler.js";
 
 import configRoutes from "./routes/config.js";
 import bitbucketRoutes from "./routes/bitbucket.js";
 import jiraRoutes from "./routes/jira.js";
 import syncRoutes from "./routes/sync.js";
 import aiReviewRoutes from "./routes/aiReview.js";
-import prWatchRoutes from "./routes/prWatch.js";
+import prReviewRoutes from "./routes/prReviews.js";
 import adminRoutes from "./routes/admin.js";
 
 // Load backend/.env if present, without adding a dependency.
@@ -43,7 +42,7 @@ app.use("/api", bitbucketRoutes);
 app.use("/api", jiraRoutes);
 app.use("/api", syncRoutes);
 app.use("/api", aiReviewRoutes);
-app.use("/api", prWatchRoutes);
+app.use("/api", prReviewRoutes);
 app.use("/api", adminRoutes);
 
 app.use((req, res) => {
@@ -67,4 +66,3 @@ app.listen(PORT, "0.0.0.0", () => {
   log(`AI Review Performance backend listening on http://localhost:${PORT} (LAN: 0.0.0.0:${PORT})`);
 });
 
-startPrWatchScheduler();
