@@ -75,7 +75,6 @@ export function listPrReviewStatuses({ repo } = {}) {
   for (const review of Object.values(readAll())) {
     if (repo && review.repo !== repo) continue;
     statuses[review.id] = {
-      score: review.score,
       reviewedAt: review.reviewedAt,
       ticketComplexity: review.ticketComplexity,
       codeCompleteness: review.codeCompleteness,

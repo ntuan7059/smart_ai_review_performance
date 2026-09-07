@@ -125,11 +125,7 @@ export async function reviewPullRequest({ repo, prId, hint } = {}) {
     throw new AtlassianApiError("AI did not return valid JSON for this PR review.", 502, "AI_BAD_RESPONSE");
   }
 
-  const missingDiff = !prDiff?.text?.trim();
-  const assessment = normalizeAssessment(parsed, {
-    truncated: Boolean(prDiff?.truncated),
-    missingDiff,
-  });
+  const assessment = normalizeAssessment(parsed);
   const saved = {
     repo: record.repo,
     prId: record.prId,

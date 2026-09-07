@@ -54,108 +54,28 @@ function asSignals(value) {
   return out.slice(0, 8);
 }
 
-/** Base score from completeness × complexity. The model never picks this number. */
-export const SCORE_MATRIX = {
-  incomplete: { low: 3, medium: 3, high: 4 },
-  adequate: { low: 5, medium: 6, high: 7 },
-  solid: { low: 6, medium: 7, high: 8 },
-  excellent: { low: 7, medium: 8, high: 9 },
-};
-
-const SCORE_PENALTIES = {
-  "tests-missing": 1,
-  "security-risk": 1,
-};
-
 function pickEnum(value, allowed, fallback) {
   const key = String(value || "").trim().toLowerCase();
   return allowed.has(key) ? key : fallback;
 }
 
-export function computePrReviewScore({
-  ticketComplexity,
-  codeCompleteness,
-  signals = [],
-  truncated = false,
-  missingDiff = false,
-} = {}) {
-  const complexity = COMPLEXITY.has(ticketComplexity) ? ticketComplexity : "medium";
-  const completeness = COMPLETENESS.has(codeCompleteness) ? codeCompleteness : "adequate";
-  const base = SCORE_MATRIX[completeness][complexity];
-  const penalties = [];
-  const seen = new Set();
-  for (const signal of signals) {
-    const amount = SCORE_PENALTIES[signal];
-    if (!amount || seen.has(signal)) continue;
-    seen.add(signal);
-    penalties.push({ signal, delta: -amount });
-  }
-  const uncapped = base + penalties.reduce((sum, item) => sum + item.delta, 0);
-  let appliedCap = null;
-  let capReason = null;
-  if (missingDiff) {
-    appliedCap = 6;
-    capReason = "missing-diff";
-  } else if (truncated) {
-    appliedCap = 7;
-    capReason = "truncated-diff";
-  }
-  let score = uncapped;
-  if (appliedCap != null && score > appliedCap) score = appliedCap;
-  score = Math.max(1, Math.min(10, score));
-  return {
-    method: "matrix",
-    ticketComplexity: complexity,
-    codeCompleteness: completeness,
-    base,
-    penalties,
-    uncapped,
-    appliedCap,
-    capReason,
-    score,
-  };
-}
-
-export function formatScoreBreakdown(breakdown) {
-  if (!breakdown || breakdown.score == null) return "";
-  const bits = [`${breakdown.base} (${breakdown.codeCompleteness} × ${breakdown.ticketComplexity})`];
-  for (const item of breakdown.penalties || []) bits.push(`− ${item.signal}`);
-  if (breakdown.capReason && breakdown.uncapped > breakdown.score) {
-    bits.push(breakdown.capReason === "missing-diff" ? "no-diff cap 6" : "truncated cap 7");
-  }
-  return `${bits.join(" · ")} → ${breakdown.score}/10`;
-}
-
-/** Normalize model labels, then compute the score. Ignores any LLM-provided score. */
-export function normalizeAssessment(raw, flags = {}) {
+/** Normalize the structured assessment the model returns. Does not compute a numeric score. */
+export function normalizeAssessment(raw) {
   const src = raw && typeof raw === "object" ? raw : {};
   const improvements = asStringArray(src.improvements?.length ? src.improvements : src.weaknesses, MAX_IMPROVEMENTS);
-  const signals = asSignals(src.signals);
-  const ticketComplexity = pickEnum(src.ticketComplexity, COMPLEXITY, "medium");
-  const codeCompleteness = pickEnum(src.codeCompleteness, COMPLETENESS, "adequate");
-  const scoreBreakdown = computePrReviewScore({
-    ticketComplexity,
-    codeCompleteness,
-    signals,
-    truncated: Boolean(flags.truncated),
-    missingDiff: Boolean(flags.missingDiff),
-  });
   return {
     strengths: asStringArray(src.strengths, MAX_STRENGTHS),
     improvements,
     weaknesses: improvements,
-    signals,
-    score: scoreBreakdown.score,
-    scoreBreakdown,
-    scoreRationale: clipText(src.scoreRationale, MAX_RATIONALE_CHARS),
-    ticketComplexity,
-    codeCompleteness,
+    signals: asSignals(src.signals),
+    scoreRationale: clipText(src.labelRationale || src.scoreRationale, MAX_RATIONALE_CHARS),
+    ticketComplexity: pickEnum(src.ticketComplexity, COMPLEXITY, "medium"),
+    codeCompleteness: pickEnum(src.codeCompleteness, COMPLETENESS, "adequate"),
     summary: clipText(src.summary, MAX_SUMMARY_CHARS),
   };
 }
 
 export function formatPrReviewMarkdown(review) {
-  const scoreLabel = review.score == null ? "n/a" : `${review.score}/10`;
   const strengths = (review.strengths || []).map((s) => `- ${s}`).join("\n") || "- (none recorded)";
   const improvements =
     (review.improvements || review.weaknesses || []).map((s) => `- ${s}`).join("\n") || "- (none recorded)";
@@ -168,11 +88,8 @@ export function formatPrReviewMarkdown(review) {
     `# PR Review — #${review.prId} ${review.title || ""}`.trim(),
     `${review.author || "unknown"} · ${review.repo} · ${review.state || ""} · ticket ${ticket}`.trim(),
     "",
-    `## Score: ${scoreLabel}`,
-    formatScoreBreakdown(review.scoreBreakdown) || review.scoreRationale || "No rationale recorded.",
-    review.scoreBreakdown && review.scoreRationale ? review.scoreRationale : "",
-    "",
     `Ticket complexity: **${review.ticketComplexity}** · Code completeness: **${review.codeCompleteness}**`,
+    review.scoreRationale || "",
     "",
     "## Summary",
     review.summary || "No summary recorded.",
@@ -185,12 +102,6 @@ export function formatPrReviewMarkdown(review) {
     "",
     `Signals: ${signals}`,
   ].join("\n");
-}
-
-export function averageScore(reviews) {
-  const scored = (reviews || []).map((r) => r.score).filter((s) => s != null);
-  if (!scored.length) return null;
-  return Math.round((scored.reduce((sum, s) => sum + s, 0) / scored.length) * 10) / 10;
 }
 
 export function countBy(reviews, field) {
@@ -210,23 +121,4 @@ export function countSignals(reviews) {
     }
   }
   return counts;
-}
-
-export function scoresByComplexity(reviews) {
-  const buckets = { low: [], medium: [], high: [] };
-  for (const r of reviews || []) {
-    const bucket = buckets[r.ticketComplexity];
-    if (!bucket || r.score == null) continue;
-    bucket.push(r.score);
-  }
-  const out = {};
-  for (const [key, scores] of Object.entries(buckets)) {
-    out[key] = {
-      count: scores.length,
-      avgScore: scores.length
-        ? Math.round((scores.reduce((sum, n) => sum + n, 0) / scores.length) * 10) / 10
-        : null,
-    };
-  }
-  return out;
 }
