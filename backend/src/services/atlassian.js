@@ -18,7 +18,11 @@ export function getJiraClient() {
 export function getBitbucketClient() {
   const cfg = readConfig();
   if (!cfg.atlassianEmail || !cfg.bitbucketApiToken) {
-    throw new AtlassianApiError("Bitbucket is not configured. Fill in Settings first.", 400, "NOT_CONFIGURED");
+    throw new AtlassianApiError(
+      "Bitbucket is not configured. Click Save settings after filling Atlassian email and Bitbucket API token.",
+      400,
+      "NOT_CONFIGURED"
+    );
   }
   return createAtlassianClient({
     baseURL: BITBUCKET_BASE_URL,

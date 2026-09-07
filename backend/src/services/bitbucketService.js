@@ -48,7 +48,36 @@ export async function listPullRequests({ repo, from, to, author, state }) {
 
   const prs = await paginate(client, `/repositories/${cfg.bitbucketWorkspace}/${repo}/pullrequests`, params);
 
-  return prs.map((pr) => ({
+  return prs.map((pr) => mapPullRequest(pr));
+}
+
+export async function listWorkspaceMembers() {
+  const cfg = readConfig();
+  if (!cfg.bitbucketWorkspace) return [];
+  const client = getBitbucketClient();
+  const members = await paginate(
+    client,
+    `/workspaces/${encodeURIComponent(cfg.bitbucketWorkspace)}/members`,
+    { pagelen: 100 }
+  );
+  return members.map((m) => {
+    const user = m.user || {};
+    return {
+      author: user.display_name || user.nickname || user.username || "unknown",
+      authorUsername: user.username || user.nickname || null,
+    };
+  });
+}
+
+export async function getPullRequest({ repo, id }) {
+  const cfg = readConfig();
+  const client = getBitbucketClient();
+  const res = await client.get(`/repositories/${cfg.bitbucketWorkspace}/${repo}/pullrequests/${id}`);
+  return mapPullRequest(res.data);
+}
+
+function mapPullRequest(pr) {
+  return {
     id: pr.id,
     title: pr.title,
     author: pr.author?.display_name || pr.author?.username || pr.author?.nickname || "unknown",
@@ -59,7 +88,7 @@ export async function listPullRequests({ repo, from, to, author, state }) {
     sourceBranch: pr.source?.branch?.name || null,
     destinationBranch: pr.destination?.branch?.name || null,
     link: pr.links?.html?.href || null,
-  }));
+  };
 }
 
 function findActivityTimestamp(activity, predicate) {
@@ -116,4 +145,23 @@ export async function getPullRequestDetails({ repo, id }) {
     mergedAt: mergeUpdate?.update?.date || null,
     mergedBy: mergeUpdate?.update?.author?.display_name || null,
   };
+}
+
+/** Unified diff for the PR as Bitbucket shows it (destination...source). */
+export async function getPullRequestDiff({ repo, id }) {
+  const cfg = readConfig();
+  const client = getBitbucketClient();
+  const res = await client.get(
+    `/repositories/${cfg.bitbucketWorkspace}/${repo}/pullrequests/${id}/diff`,
+    {
+      headers: { Accept: "text/plain" },
+      responseType: "text",
+      timeout: 60000,
+      maxContentLength: 8 * 1024 * 1024,
+      maxBodyLength: 8 * 1024 * 1024,
+      transformResponse: [(data) => data],
+    }
+  );
+  if (res.data == null) return "";
+  return typeof res.data === "string" ? res.data : String(res.data);
 }

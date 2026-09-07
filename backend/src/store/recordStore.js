@@ -44,6 +44,9 @@ function createJsonStore() {
     getAll() {
       return Object.values(readAll()).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     },
+    get(repo, prId) {
+      return readAll()[recordId(repo, prId)] || null;
+    },
     getByRepo(repo) {
       return Object.values(readAll()).filter((r) => r.repo === repo);
     },
@@ -86,6 +89,10 @@ function createSqliteStore(Database) {
     getAll() {
       const rows = db.prepare(`SELECT data FROM pr_ticket_records ORDER BY createdAt DESC`).all();
       return rows.map((r) => JSON.parse(r.data));
+    },
+    get(repo, prId) {
+      const row = db.prepare(`SELECT data FROM pr_ticket_records WHERE id = ?`).get(recordId(repo, prId));
+      return row ? JSON.parse(row.data) : null;
     },
     getByRepo(repo) {
       const rows = db.prepare(`SELECT data FROM pr_ticket_records WHERE repo = ?`).all(repo);

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import Markdown from "../components/Markdown.jsx";
+import { ScoreBadge } from "../components/PrReviewPanel.jsx";
 
 const METRIC_LABELS = [
   ["totalPRs", "Total PRs"],
@@ -14,16 +15,19 @@ const METRIC_LABELS = [
   ["linesRemoved", "Lines removed"],
   ["reopenedTicketCount", "Reopen events"],
   ["avgDaysToReworkPr", "Avg days to fix (rework)"],
+  ["savedReviews", "Saved PR reviews"],
+  ["avgScore", "Avg PR score"],
 ];
 
 function formatMetric(key, value) {
   if (value === null || value === undefined) return "—";
   if (key === "approvalRate") return `${Math.round(value * 100)}%`;
   if (key === "avgDaysToReworkPr") return `${value}d`;
+  if (key === "avgScore") return `${value}/10`;
   return value;
 }
 
-export default function PerformanceReviewPage() {
+export default function PerformanceReviewPage({ active = true }) {
   const toast = useToast();
   const [authors, setAuthors] = useState([]);
   const [author, setAuthor] = useState("");
@@ -33,20 +37,28 @@ export default function PerformanceReviewPage() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
+    if (!active) return;
     api
       .listAiReviewAuthors()
       .then(setAuthors)
       .catch((err) => toast.error(err.message));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [active]);
 
   async function handleRun(e) {
     e.preventDefault();
     if (!author) return toast.error("Choose a person first.");
+    const selected = authors.find((a) => (a.authorUsername || a.author) === author);
     setLoading(true);
     setResult(null);
     try {
-      const res = await api.runAiReview({ author, from, to });
+      const res = await api.runAiReview({
+        author: selected?.author || author,
+        authorUsername: selected?.authorUsername || null,
+        from,
+        to,
+        mode: "pr-reviews",
+      });
       setResult(res);
     } catch (err) {
       toast.error(err.message);
@@ -71,12 +83,10 @@ export default function PerformanceReviewPage() {
 
   return (
     <div className="page">
-      <h2>AI Review</h2>
+      <h2>Review member</h2>
       <p className="muted">
-        Sends the AI agent configured in Settings an evidence packet — per-PR diffstats, commit messages, review
-        comments, and linked ticket descriptions/comments — and asks it to write a structured report (delivery,
-        code quality, rework/bug turnaround, recommendations) that cites specific PRs and tickets rather than
-        vague generalities. Downloadable as a Markdown document once generated.
+        Synthesize <strong>saved per-PR reviews</strong> in the date range (strengths, weaknesses, scores from
+        ticket complexity and code completeness). Review individual PRs first on Review PR.
       </p>
 
       <form className="filter-bar" onSubmit={handleRun}>
@@ -86,7 +96,9 @@ export default function PerformanceReviewPage() {
             <option value="">Select…</option>
             {authors.map((a) => (
               <option key={a.authorUsername || a.author} value={a.authorUsername || a.author}>
-                {a.author || a.authorUsername}
+                {a.author && a.authorUsername && a.author !== a.authorUsername
+                  ? `${a.author} (${a.authorUsername})`
+                  : a.author || a.authorUsername}
               </option>
             ))}
           </select>
@@ -99,15 +111,40 @@ export default function PerformanceReviewPage() {
           To
           <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </label>
-        <button type="submit" disabled={loading}>
+        <button type="submit" disabled={loading || !authors.length}>
           {loading ? "Reviewing…" : "Run review"}
         </button>
       </form>
 
-      {loading && <p className="muted">Asking the AI agent — this can take a little while…</p>}
+      {!authors.length && (
+        <p className="muted">
+          No people yet. Connect Bitbucket in Settings, then either Sync PRs or wait for workspace members to
+          load. If the list is still empty, the Bitbucket token may be missing{" "}
+          <code>read:workspace:bitbucket</code>.
+        </p>
+      )}
+
+      {loading && (
+        <p className="muted">Loading saved PR reviews and asking the AI agent to synthesize them…</p>
+      )}
 
       {result && (
         <>
+          {result.coverage && (
+            <div className="banner banner-info" style={{ marginBottom: 16 }}>
+              <strong>Saved PR reviews:</strong> {result.coverage.savedReviews} review(s)
+              {result.coverage.avgScore != null ? ` · avg score ${result.coverage.avgScore}/10` : ""}
+              {result.coverage.syncedPRs
+                ? ` · ${result.coverage.syncedPRs} synced PR(s) in range`
+                : ""}
+              {result.coverage.unreviewedCount
+                ? ` · ${result.coverage.unreviewedCount} synced PR(s) not yet reviewed`
+                : ""}
+              .
+            </div>
+          )}
+
+          <h3 style={{ marginBottom: 8 }}>Delivery metrics</h3>
           <div className="metric-grid">
             {METRIC_LABELS.map(([key, label]) => (
               <div className="metric-card" key={key}>
@@ -117,8 +154,57 @@ export default function PerformanceReviewPage() {
             ))}
           </div>
 
+          {result.prReviews?.length > 0 && (
+            <>
+              <h3 style={{ marginTop: 24, marginBottom: 8 }}>PR reviews in range</h3>
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>PR</th>
+                    <th>Title</th>
+                    <th>Score</th>
+                    <th>Complexity</th>
+                    <th>Completeness</th>
+                    <th>Strengths</th>
+                    <th>Weaknesses</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.prReviews.map((r) => (
+                    <tr key={`${r.repo}#${r.prId}`}>
+                      <td>
+                        <a href={r.link} target="_blank" rel="noreferrer">
+                          {r.repo}#{r.prId}
+                        </a>
+                      </td>
+                      <td>{r.title}</td>
+                      <td>
+                        <ScoreBadge score={r.score} />
+                      </td>
+                      <td>{r.ticketComplexity || "—"}</td>
+                      <td>{r.codeCompleteness || "—"}</td>
+                      <td className="muted small">{(r.strengths || []).slice(0, 2).join("; ") || "—"}</td>
+                      <td className="muted small">{(r.weaknesses || []).slice(0, 2).join("; ") || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          <h3 style={{ marginTop: 24, marginBottom: 8 }}>AI report (from saved PR reviews)</h3>
           <div className="detail-panel">
-            <div className="muted small" style={{ marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div
+              className="muted small"
+              style={{
+                marginBottom: 8,
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
               <span>
                 Provider: {result.provider} · Range: {result.from || "all time"} → {result.to || "all time"}
               </span>
@@ -132,7 +218,10 @@ export default function PerformanceReviewPage() {
       )}
 
       {!loading && !result && (
-        <p className="muted">Pick a person and click Run review. Requires a Sync to have run first.</p>
+        <p className="muted">
+          Pick a person and click Run review. Review that person&apos;s PRs first so there is something to
+          synthesize.
+        </p>
       )}
     </div>
   );

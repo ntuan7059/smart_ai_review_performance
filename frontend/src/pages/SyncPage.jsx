@@ -2,12 +2,29 @@ import React, { useEffect, useMemo, useState } from "react";
 import { api } from "../api.js";
 import { useToast } from "../context/ToastContext.jsx";
 import StatusBadge from "../components/StatusBadge.jsx";
+import PrReviewPanel, { ScoreBadge } from "../components/PrReviewPanel.jsx";
 import { defaultFrom, defaultTo } from "../lib/dates.js";
+
+function formatDate(iso) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString(undefined, {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  });
+}
 
 function formatLocal(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString();
 }
+
+const PR_STATES = [
+  { value: "OPEN", label: "Open" },
+  { value: "MERGED", label: "Merged" },
+  { value: "DECLINED", label: "Declined" },
+  { value: "SUPERSEDED", label: "Superseded" },
+];
 
 const SORT_OPTIONS = [
   { value: "createdAt", label: "Created date" },
@@ -16,22 +33,30 @@ const SORT_OPTIONS = [
   { value: "jiraKey", label: "Ticket" },
 ];
 
+function ticketBrowseUrl(jiraBaseUrl, key) {
+  if (!jiraBaseUrl || !key) return null;
+  return `${jiraBaseUrl.replace(/\/+$/, "")}/browse/${encodeURIComponent(key)}`;
+}
+
 export default function SyncPage() {
   const toast = useToast();
   const [repos, setRepos] = useState([]);
   const [repo, setRepo] = useState("");
   const [from, setFrom] = useState(defaultFrom);
   const [to, setTo] = useState(defaultTo);
-  const [author, setAuthor] = useState("");
   const [syncing, setSyncing] = useState(false);
   const [records, setRecords] = useState([]);
   const [loadingRecords, setLoadingRecords] = useState(false);
 
   const [filterAuthor, setFilterAuthor] = useState("");
-  const [filterLinkStatus, setFilterLinkStatus] = useState("");
+  const [filterState, setFilterState] = useState("");
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortDir, setSortDir] = useState("desc");
   const [notConfigured, setNotConfigured] = useState(false);
+  const [reviewStatuses, setReviewStatuses] = useState({});
+  const [reviewingKey, setReviewingKey] = useState(null);
+  const [openReview, setOpenReview] = useState(null);
+  const [jiraBaseUrl, setJiraBaseUrl] = useState("");
 
   useEffect(() => {
     api
@@ -44,6 +69,10 @@ export default function SyncPage() {
         if (err.code === "NOT_CONFIGURED") setNotConfigured(true);
         else toast.error(err.message);
       });
+    api
+      .getConfig()
+      .then((cfg) => setJiraBaseUrl(cfg.jiraBaseUrl || ""))
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -52,6 +81,11 @@ export default function SyncPage() {
     try {
       const r = await api.getRecords(forRepo);
       setRecords(r);
+      try {
+        setReviewStatuses(await api.listPrReviewStatuses(forRepo));
+      } catch {
+        setReviewStatuses({});
+      }
     } catch (err) {
       toast.error(err.message);
     } finally {
@@ -69,7 +103,7 @@ export default function SyncPage() {
     if (!repo) return toast.error("Choose a repository first.");
     setSyncing(true);
     try {
-      const result = await api.sync({ repo, from, to, author });
+      const result = await api.sync({ repo, from, to });
       toast.success(`Synced ${result.synced} PR(s), ${result.failed} failed.`);
       if (result.failed > 0) {
         toast.error(`${result.failed} PR(s) failed to sync — check backend logs.`);
@@ -82,13 +116,33 @@ export default function SyncPage() {
     }
   }
 
+  const authorOptions = useMemo(() => {
+    const seen = new Map();
+    for (const r of records) {
+      const value = r.authorUsername || r.author;
+      if (!value || seen.has(value)) continue;
+      const label =
+        r.author && r.authorUsername && r.author !== r.authorUsername
+          ? `${r.author} (${r.authorUsername})`
+          : r.author || r.authorUsername;
+      seen.set(value, label);
+    }
+    return [...seen.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [records]);
+
+  useEffect(() => {
+    if (filterAuthor && !authorOptions.some((o) => o.value === filterAuthor)) setFilterAuthor("");
+  }, [authorOptions, filterAuthor]);
+
   const visibleRecords = useMemo(() => {
     let rows = [...records];
     if (filterAuthor) {
-      rows = rows.filter((r) => (r.author || "").toLowerCase().includes(filterAuthor.toLowerCase()));
+      rows = rows.filter((r) => (r.authorUsername || r.author) === filterAuthor || r.author === filterAuthor);
     }
-    if (filterLinkStatus) {
-      rows = rows.filter((r) => r.linkStatus === filterLinkStatus);
+    if (filterState) {
+      rows = rows.filter((r) => r.state === filterState);
     }
     rows.sort((a, b) => {
       const av = a[sortBy] ?? "";
@@ -97,11 +151,51 @@ export default function SyncPage() {
       return sortDir === "asc" ? cmp : -cmp;
     });
     return rows;
-  }, [records, filterAuthor, filterLinkStatus, sortBy, sortDir]);
+  }, [records, filterAuthor, filterState, sortBy, sortDir]);
+
+  async function handleReviewRecord(record) {
+    const key = `${record.repo}#${record.prId}`;
+    setReviewingKey(key);
+    try {
+      const review = await api.reviewPullRequest(record.repo, record.prId);
+      setReviewStatuses((prev) => ({
+        ...prev,
+        [key]: {
+          score: review.score,
+          reviewedAt: review.reviewedAt,
+          ticketComplexity: review.ticketComplexity,
+          codeCompleteness: review.codeCompleteness,
+        },
+      }));
+      setOpenReview(review);
+      toast.success(`Saved review for #${record.prId} (${review.score ?? "n/a"}/10).`);
+    } catch (err) {
+      toast.error(err.message);
+    } finally {
+      setReviewingKey(null);
+    }
+  }
+
+  async function handleViewReview(record) {
+    try {
+      setOpenReview(await api.getPrReview(record.repo, record.prId));
+    } catch (err) {
+      toast.error(err.message);
+    }
+  }
 
   return (
     <div className="page">
-      <h2>Sync &amp; Records</h2>
+      <div className="page-heading">
+        <h2>Review PR</h2>
+        {records.length > 0 && (
+          <span className="muted small">
+            {visibleRecords.length === records.length
+              ? `${records.length} PR${records.length === 1 ? "" : "s"}`
+              : `${visibleRecords.length} of ${records.length} PRs`}
+          </span>
+        )}
+      </div>
 
       {notConfigured && (
         <div className="banner banner-info">
@@ -109,139 +203,204 @@ export default function SyncPage() {
         </div>
       )}
 
-      <form className="filter-bar" onSubmit={handleSync}>
-        <label>
-          Repo
-          <select value={repo} onChange={(e) => setRepo(e.target.value)}>
-            <option value="">Select…</option>
-            {repos.map((r) => (
-              <option key={r.slug} value={r.slug}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          From
-          <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
-        </label>
-        <label>
-          To
-          <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
-        </label>
-        <label>
-          Author (username)
-          <input type="text" value={author} onChange={(e) => setAuthor(e.target.value)} placeholder="jdoe" />
-        </label>
-        <button type="submit" disabled={syncing}>
-          {syncing ? "Syncing…" : "Sync"}
-        </button>
-        <button type="button" onClick={() => { setFrom(""); setTo(""); }}>
-          Clear dates (sync all time)
-        </button>
-      </form>
-      <p className="muted small" style={{ marginTop: -10 }}>
-        Defaults to the last 7 days — widen or clear the range to pull older PRs.
-      </p>
+      <div className="toolbar-panel">
+        <form className="filter-bar" onSubmit={handleSync}>
+          <label>
+            Repo
+            <select value={repo} onChange={(e) => setRepo(e.target.value)}>
+              <option value="">Select…</option>
+              {repos.map((r) => (
+                <option key={r.slug} value={r.slug}>
+                  {r.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            From
+            <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </label>
+          <label>
+            To
+            <input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </label>
+          <button type="submit" disabled={syncing}>
+            {syncing ? "Syncing…" : "Sync"}
+          </button>
+        </form>
+        <p className="muted small toolbar-hint">Defaults to the last 7 days — widen the range to pull older PRs.</p>
+      </div>
 
-      <div className="filter-bar">
-        <label>
-          Filter by author
-          <input type="text" value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)} />
-        </label>
-        <label>
-          Filter by link status
-          <select value={filterLinkStatus} onChange={(e) => setFilterLinkStatus(e.target.value)}>
-            <option value="">All</option>
-            <option value="linked">Linked</option>
-            <option value="unlinked">Unlinked</option>
-            <option value="ambiguous">Ambiguous</option>
-          </select>
-        </label>
-        <label>
-          Sort by
-          <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-            {SORT_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}>
-          {sortDir === "asc" ? "↑ Ascending" : "↓ Descending"}
-        </button>
+      <div className="toolbar-panel">
+        <div className="filter-bar">
+          <label>
+            Author
+            <select value={filterAuthor} onChange={(e) => setFilterAuthor(e.target.value)}>
+              <option value="">All</option>
+              {authorOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            State
+            <select value={filterState} onChange={(e) => setFilterState(e.target.value)}>
+              <option value="">All</option>
+              {PR_STATES.map((s) => (
+                <option key={s.value} value={s.value}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Sort by
+            <span className="field-input-row">
+              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                {SORT_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <button type="button" onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}>
+                {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+              </button>
+            </span>
+          </label>
+        </div>
       </div>
 
       {loadingRecords ? (
         <p className="muted">Loading persisted records…</p>
       ) : (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>PR</th>
-              <th>Title</th>
-              <th>Author</th>
-              <th>State</th>
-              <th>Created</th>
-              <th>Merged</th>
-              <th>Ticket</th>
-              <th>Ticket status</th>
-              <th>Story pts</th>
-              <th>Link status</th>
-              <th>Reopened</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleRecords.map((r) => (
-              <tr key={`${r.repo}-${r.prId}`} className={r.linkStatus !== "linked" ? "row-flagged" : ""}>
-                <td>#{r.prId}</td>
-                <td>{r.title}</td>
-                <td>{r.author}</td>
-                <td>
-                  <StatusBadge value={r.state} />
-                </td>
-                <td>{formatLocal(r.createdAt)}</td>
-                <td>{formatLocal(r.mergedAt)}</td>
-                <td>
-                  {r.jiraKey ? (
-                    <code>{r.jiraKey}</code>
-                  ) : (
-                    <span className="muted">none</span>
-                  )}
-                  {r.multipleKeysDetected && (
-                    <span className="badge badge-orange" title={r.jiraKeyCandidates?.join(", ")}>
-                      multiple
-                    </span>
-                  )}
-                </td>
-                <td>{r.ticketStatus ? <StatusBadge value={r.ticketStatus} /> : "—"}</td>
-                <td>{r.storyPoints ?? "—"}</td>
-                <td>
-                  <StatusBadge value={r.linkStatus} />
-                  {r.ticketError && <div className="muted small">{r.ticketError.message}</div>}
-                </td>
-                <td>
-                  {r.reopened ? (
-                    <span className="badge badge-orange" title={r.reopenDates?.map(formatLocal).join(", ")}>
-                      {r.reopenCount}×
-                    </span>
-                  ) : (
-                    "—"
-                  )}
-                </td>
-              </tr>
-            ))}
-            {visibleRecords.length === 0 && (
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
               <tr>
-                <td colSpan={11} className="muted">
-                  No records yet — run a Sync above.
-                </td>
+                <th>PR</th>
+                <th>Title</th>
+                <th>Author</th>
+                <th>State</th>
+                <th>Created</th>
+                <th>Merged</th>
+                <th>Ticket</th>
+                <th>Status</th>
+                <th>Pts</th>
+                <th>Reopened</th>
+                <th>Score</th>
+                <th>Review</th>
               </tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {visibleRecords.map((r) => {
+                const key = `${r.repo}#${r.prId}`;
+                const status = reviewStatuses[key];
+                const ticketHref = ticketBrowseUrl(jiraBaseUrl, r.jiraKey);
+                const reviewing = reviewingKey === key;
+                return (
+                  <tr key={key} className={r.linkStatus !== "linked" ? "row-flagged" : ""}>
+                    <td className="cell-id">
+                      {r.link ? (
+                        <a className="pr-link" href={r.link} target="_blank" rel="noreferrer">
+                          #{r.prId}
+                        </a>
+                      ) : (
+                        `#${r.prId}`
+                      )}
+                    </td>
+                    <td className="cell-title" title={r.title}>
+                      {r.link ? (
+                        <a className="pr-link cell-title-text" href={r.link} target="_blank" rel="noreferrer">
+                          {r.title}
+                        </a>
+                      ) : (
+                        <span className="cell-title-text">{r.title}</span>
+                      )}
+                    </td>
+                    <td className="cell-nowrap">{r.author}</td>
+                    <td>
+                      <StatusBadge value={r.state} />
+                    </td>
+                    <td className="cell-nowrap" title={formatLocal(r.createdAt)}>
+                      {formatDate(r.createdAt)}
+                    </td>
+                    <td className="cell-nowrap" title={formatLocal(r.mergedAt)}>
+                      {formatDate(r.mergedAt)}
+                    </td>
+                    <td className="cell-nowrap">
+                      {r.jiraKey ? (
+                        ticketHref ? (
+                          <a className="ticket-link" href={ticketHref} target="_blank" rel="noreferrer">
+                            {r.jiraKey}
+                          </a>
+                        ) : (
+                          <span className="ticket-link">{r.jiraKey}</span>
+                        )
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                      {r.multipleKeysDetected && (
+                        <span className="badge badge-orange" style={{ marginLeft: 6 }} title={r.jiraKeyCandidates?.join(", ")}>
+                          multiple
+                        </span>
+                      )}
+                    </td>
+                    <td>{r.ticketStatus ? <StatusBadge value={r.ticketStatus} /> : <span className="muted">—</span>}</td>
+                    <td className="cell-id">{r.storyPoints ?? "—"}</td>
+                    <td>
+                      {r.reopened ? (
+                        <span className="badge badge-orange" title={r.reopenDates?.map(formatLocal).join(", ")}>
+                          {r.reopenCount}×
+                        </span>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      {status ? (
+                        <button
+                          type="button"
+                          className="score-open"
+                          onClick={() => handleViewReview(r)}
+                          title="View review"
+                        >
+                          <ScoreBadge score={status.score} />
+                        </button>
+                      ) : (
+                        <span className="muted">—</span>
+                      )}
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="btn-compact"
+                        disabled={reviewing}
+                        onClick={() => handleReviewRecord(r)}
+                      >
+                        {reviewing ? "Reviewing…" : status ? "Re-review" : "Review"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {visibleRecords.length === 0 && (
+                <tr>
+                  <td colSpan={12} className="muted">
+                    {records.length
+                      ? "No records match the current filters."
+                      : "No records yet — run a Sync above."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
+
+      {openReview && <PrReviewPanel review={openReview} onClose={() => setOpenReview(null)} />}
     </div>
   );
 }

@@ -1,0 +1,169 @@
+import React, { useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
+import Markdown from "./Markdown.jsx";
+import StatusBadge from "./StatusBadge.jsx";
+
+function scoreTone(score) {
+  if (score == null) return "badge-gray";
+  if (score >= 8) return "badge-green";
+  if (score >= 6) return "badge-orange";
+  return "badge-red";
+}
+
+export function ScoreBadge({ score }) {
+  if (score == null) return <span className="muted">—</span>;
+  return <StatusBadge value={`${score}/10`} tone={scoreTone(score)} />;
+}
+
+function BulletList({ items, empty }) {
+  if (!items?.length) return <p className="muted">{empty}</p>;
+  return (
+    <ul className="compact-list">
+      {items.map((item, i) => (
+        <li key={i}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function diffCoverageLabel(coverage) {
+  if (!coverage) return "";
+  if (coverage.error) return " · diff unavailable";
+  const n = coverage.included?.length || 0;
+  if (!n) return " · no source files in diff";
+  return ` · ${n} file${n === 1 ? "" : "s"} from Bitbucket diff${coverage.truncated ? " (truncated)" : ""}`;
+}
+
+function formatReviewedAt(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString();
+}
+
+function clipDisplay(text, max) {
+  if (!text) return "";
+  const value = String(text).trim();
+  if (value.length <= max) return value;
+  const cut = value.slice(0, max);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > max * 0.55 ? cut.slice(0, at) : cut).trimEnd()}…`;
+}
+
+export default function PrReviewPanel({ review, onClose }) {
+  const dialogRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const node = dialogRef.current;
+    if (!node) return undefined;
+    if (!node.open) node.showModal();
+
+    function onCancel(event) {
+      event.preventDefault();
+      onCloseRef.current?.();
+    }
+    node.addEventListener("cancel", onCancel);
+    return () => {
+      node.removeEventListener("cancel", onCancel);
+      if (node.open) node.close();
+    };
+  }, []);
+
+  if (!review) return null;
+
+  function handleBackdropClick(event) {
+    if (event.target === dialogRef.current) onCloseRef.current?.();
+  }
+
+  const reviewedAt = formatReviewedAt(review.reviewedAt);
+  const ticket = review.jiraKey
+    ? `${review.jiraKey}${review.storyPoints != null ? ` (${review.storyPoints} pts)` : ""}`
+    : null;
+
+  const summary = clipDisplay(review.summary, 220);
+  const rationale = clipDisplay(review.scoreRationale, 160);
+  const strengths = (review.strengths || []).slice(0, 3);
+  const weaknesses = (review.weaknesses || []).slice(0, 3);
+
+  return createPortal(
+    <dialog
+      ref={dialogRef}
+      className="review-dialog"
+      onClick={handleBackdropClick}
+      aria-labelledby="review-dialog-title"
+    >
+      <div className="review-dialog-inner">
+        <header className="review-dialog-header">
+          <div>
+            <h3 id="review-dialog-title">
+              PR #{review.prId}
+              {review.title ? ` ${review.title}` : ""}
+            </h3>
+            <p className="muted small review-dialog-meta">
+              {[review.author, review.repo, review.state].filter(Boolean).join(" · ")}
+              {ticket ? ` · ticket ${ticket}` : ""}
+              {reviewedAt ? ` · reviewed ${reviewedAt}` : ""}
+              {diffCoverageLabel(review.diffCoverage)}
+            </p>
+          </div>
+          <button type="button" onClick={() => onCloseRef.current?.()} aria-label="Close review">
+            Close
+          </button>
+        </header>
+
+        <div className="review-dialog-body">
+          <div className="review-dialog-metrics">
+            <div className="metric-card">
+              <div className="metric-value">
+                <ScoreBadge score={review.score} />
+              </div>
+              <div className="metric-label">Score</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-value">{review.ticketComplexity || "—"}</div>
+              <div className="metric-label">Ticket complexity</div>
+            </div>
+            <div className="metric-card">
+              <div className="metric-value">{review.codeCompleteness || "—"}</div>
+              <div className="metric-label">Code completeness</div>
+            </div>
+          </div>
+
+          {summary || rationale ? (
+            <p className="review-dialog-summary">
+              {summary || rationale}
+              {summary && rationale && rationale !== summary ? <span className="muted"> {rationale}</span> : null}
+            </p>
+          ) : null}
+
+          <div className="review-dialog-lists">
+            <section className="detail-section">
+              <h4>Strengths</h4>
+              <BulletList items={strengths} empty="None recorded." />
+            </section>
+            <section className="detail-section">
+              <h4>Weaknesses</h4>
+              <BulletList items={weaknesses} empty="None recorded." />
+            </section>
+          </div>
+
+          {!review.summary && !review.scoreRationale && !review.strengths?.length && !review.weaknesses?.length && review.reviewDocument ? (
+            <section className="detail-section">
+              <Markdown text={review.reviewDocument} />
+            </section>
+          ) : null}
+
+          {review.link ? (
+            <p className="muted small" style={{ marginTop: 16 }}>
+              <a href={review.link} target="_blank" rel="noreferrer">
+                Open pull request
+              </a>
+            </p>
+          ) : null}
+        </div>
+      </div>
+    </dialog>,
+    document.body
+  );
+}
